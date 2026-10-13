@@ -1,0 +1,11 @@
+// VODNOX - Bootstrap 5 RTL stylesheet
+// Used for the Arabic (RTL) interface.
+//
+// We import Bootstrap's official pre-built RTL CSS so the output is a
+// fully right-to-left stylesheet. Vite keeps it as a separate chunk
+// because this entry does not share the LTR SCSS import graph.
+//
+// To customize RTL variables, override them in a separate SCSS partial
+// imported BEFORE bootstrap. For now we use the stock Bootstrap RTL build.
+
+@import 'bootstrap/dist/css/bootstrap.rtl.css';
