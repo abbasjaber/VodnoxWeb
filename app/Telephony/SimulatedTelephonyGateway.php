@@ -21,6 +21,16 @@ class SimulatedTelephonyGateway implements TelephonyGateway
         return $this->result('provision_extension', $payload);
     }
 
+    public function deprovisionExtension(array $payload): array
+    {
+        return $this->result('deprovision_extension', $payload);
+    }
+
+    public function deprovisionOrganization(array $payload): array
+    {
+        return $this->result('deprovision_organization', $payload);
+    }
+
     public function provisionIvr(array $payload): array
     {
         return $this->result('provision_ivr', $payload);

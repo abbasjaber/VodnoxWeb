@@ -1,0 +1,26 @@
+; ---------------------------------------------------------------------------
+; VODNOX — HTTP server / WebSocket endpoint for the browser phone.
+; ---------------------------------------------------------------------------
+; Merge into /etc/asterisk/http.conf (the [general] section).
+;
+; The plaintext HTTP server stays bound to loopback only (so the internal HTTP
+; server stays effectively disabled); the WebSocket endpoint is exposed over
+; TLS on 8089 with a trusted certificate. Browsers refuse a self-signed
+; certificate for WSS, so use the real certificate for pbx.vodnox.com.
+;
+; Asterisk must be able to read the key. Suggested ownership:
+;     chown root:asterisk /etc/asterisk/keys/pbx.vodnox.com.key
+;     chmod 0640          /etc/asterisk/keys/pbx.vodnox.com.key
+; ---------------------------------------------------------------------------
+
+[general]
+enabled=yes
+bindaddr=127.0.0.1
+bindport=8088
+
+tlsenable=yes
+tlsbindaddr=0.0.0.0:8089
+tlscertfile=/etc/asterisk/keys/pbx.vodnox.com.fullchain.pem
+tlsprivatekey=/etc/asterisk/keys/pbx.vodnox.com.key
+
+; Reload with:  asterisk -rx "http reload"

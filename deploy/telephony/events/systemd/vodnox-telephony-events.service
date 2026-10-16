@@ -1,0 +1,38 @@
+[Unit]
+Description=VODNOX telephony call-event forwarder (Asterisk AMI -> Laravel webhook)
+# Started after Asterisk so AMI is listening; it reconnects on its own anyway.
+After=network-online.target asterisk.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Same account as the provisioning agent: it already has read access to the
+# AMI socket on loopback and to its own spool directory.
+User=asterisk
+Group=asterisk
+
+# The @PHP_CLI_BIN@ placeholder is substituted by bin/install.sh from the CLI
+# actually present on this host. This is the plain CLI SAPI: its version is
+# independent of the php-fpm used by the provisioning agent and of whatever
+# PHP hosts Laravel. If you install this unit by hand, replace it yourself.
+ExecStart=@PHP_CLI_BIN@ /opt/vodnox-telephony-events/run.php
+Environment=VODNOX_EVENTS_CONFIG=/etc/vodnox-telephony-events/config.php
+
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/var/lib/vodnox-telephony
+
+[Install]
+WantedBy=multi-user.target

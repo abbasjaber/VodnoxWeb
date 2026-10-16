@@ -20,12 +20,27 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(TelephonyGateway::class, function () {
+            // Preferred: the real provisioning agent configured through the
+            // environment (see config/integrations.php and deploy/telephony).
+            $url = (string) config('integrations.telephony.provisioning_url', '');
+
+            if ($url !== '' && config('integrations.telephony.enabled')) {
+                return new HttpTelephonyGateway([
+                    'base_url' => $url,
+                    'token' => (string) config('integrations.telephony.token', ''),
+                    'signing_secret' => (string) config('integrations.telephony.signing_secret', ''),
+                    'timeout' => (int) config('integrations.defaults.timeout', 15),
+                    'connect_timeout' => (int) config('integrations.defaults.connect_timeout', 5),
+                ]);
+            }
+
             $server = $this->resolveConfiguredServer();
 
             if ($server) {
                 return new HttpTelephonyGateway([
                     'base_url' => $server->host,
                     'token' => $server->ami_secret,
+                    'signing_secret' => (string) config('integrations.telephony.signing_secret', ''),
                     'timeout' => (int) config('integrations.defaults.timeout', 15),
                 ]);
             }

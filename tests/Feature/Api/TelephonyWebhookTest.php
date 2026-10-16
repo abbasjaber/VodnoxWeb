@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Extension;
 use App\Models\Organization;
 use App\Models\WebhookEvent;
 use Illuminate\Support\Facades\Config;
@@ -153,5 +154,46 @@ class TelephonyWebhookTest extends TestCase
             'organization_id' => $organization->id,
         ]);
         $this->assertInstanceOf(Organization::class, $organization);
+    }
+
+    public function test_a_signed_event_for_a_known_extension_reaches_the_call_log(): void
+    {
+        $this->configure();
+
+        $organization = $this->organization();
+        $agent = $this->orgUser($organization, 'agent', ['extension' => '1001']);
+
+        $extension = Extension::create([
+            'organization_id' => $organization->id,
+            'user_id' => $agent->id,
+            'extension' => '1001',
+            'status' => 'active',
+            'provisioning_status' => 'synced',
+            'sip_username' => 'vdx'.$organization->id.'_webhookagent',
+            'sip_password' => 'sip-secret-webhook',
+        ]);
+
+        $payload = [
+            'event_id' => 'evt-live-1',
+            'event_type' => 'ringing',
+            'caller_username' => $extension->sip_username,
+            'callee_username' => $extension->sip_username,
+            'linkedid' => 'linked-live-1',
+            'occurred_at' => now()->toIso8601String(),
+        ];
+        $body = json_encode($payload);
+
+        $this->send($payload, $this->sign($body))->assertOk();
+
+        // The organization is derived from the endpoint, not from the payload.
+        $this->assertDatabaseHas('calls', [
+            'organization_id' => $organization->id,
+            'external_call_id' => 'linked-live-1',
+            'status' => 'ringing',
+        ]);
+
+        // A retry of the same event must not touch the call log twice.
+        $this->send($payload, $this->sign($body))->assertOk()->assertJsonPath('data.duplicate', true);
+        $this->assertDatabaseCount('calls', 1);
     }
 }

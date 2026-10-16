@@ -1,0 +1,42 @@
+; ---------------------------------------------------------------------------
+; VODNOX — Asterisk Manager Interface account for the call-event forwarder.
+; ---------------------------------------------------------------------------
+; Merge into /etc/asterisk/manager.conf.
+;
+; The account is deliberately read-only and loopback-only:
+;   * it can subscribe to call events and Ping the link;
+;   * it cannot originate, hang up, transfer or change anything, so a stolen
+;     credential still cannot touch a call (write = is empty on purpose);
+;   * it is only reachable from 127.0.0.1, so nothing is exposed on the public
+;     interface even though AMI itself stays enabled.
+;
+; The existing [general] section must already contain:
+;
+;     enabled  = yes
+;     bindaddr = 127.0.0.1
+;     bindport = 5038
+;
+; Do NOT widen bindaddr to 0.0.0.0 and do NOT remove the deny/permit pair
+; below: Asterisk reads the first matching line, so "deny all" must come first.
+;
+; The secret is generated on the server and must be the same value as
+; ami.secret in /etc/vodnox-telephony-events/config.php. Generate it with:
+;
+;     openssl rand -hex 32
+;
+; manager.conf holds that secret, so keep it unreadable by other users:
+;
+;     chown root:asterisk /etc/asterisk/manager.conf
+;     chmod 0640          /etc/asterisk/manager.conf
+;
+; Apply without touching live calls:
+;
+;     asterisk -rx "manager reload"
+; ---------------------------------------------------------------------------
+
+[vodnox-events]
+secret = REPLACE_WITH_AMI_SECRET
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = call
+write =

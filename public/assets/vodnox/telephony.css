@@ -1,0 +1,57 @@
+/*
+ * Browser phone (SIP.js) — used inside the shared call workspace on the
+ * incoming-call and reception screens. Colours are declared locally so the
+ * panel stays readable even on pages that do not define the workspace tokens.
+ */
+.phone-card{
+  --rx-bg:#f5f7fa;--rx-card:#fff;--rx-ink:#172842;--rx-muted:#687b94;--rx-line:#e4eaf2;--rx-soft:#f7f9fc;--rx-green:#267b61;--rx-red:#b74755;--rx-gold:#f7b955;
+  margin-bottom:20px;
+}
+html[data-theme=dark] .phone-card{
+  --rx-bg:#0b1424;--rx-card:#132238;--rx-ink:#e8eef8;--rx-muted:#a9b9cf;--rx-line:#293950;--rx-soft:#192b43;--rx-green:#89d9b4;--rx-red:#f1a8b3;
+}
+
+.phone-status[data-state=registered]{background:#eaf6f0;color:#267b61;border-color:#d1ebdf}
+.phone-status[data-state=connecting],.phone-status[data-state=provisioning]{background:#fff5e5;color:#916628;border-color:#f1debd}
+.phone-status[data-state=failed],.phone-status[data-state=disabled]{background:#fff0f2;color:#b74755;border-color:#f2d5db}
+html[data-theme=dark] .phone-status[data-state=registered]{background:#183b35;color:#91dfbf;border-color:#285148}
+html[data-theme=dark] .phone-status[data-state=connecting],html[data-theme=dark] .phone-status[data-state=provisioning]{background:#3a2e21;color:#f0ce93;border-color:#594a33}
+html[data-theme=dark] .phone-status[data-state=failed],html[data-theme=dark] .phone-status[data-state=disabled]{background:#3e2837;color:#f1b2bd;border-color:#60414d}
+
+.phone-message,.phone-notice{margin:0 0 14px;font-size:9px;line-height:1.9;padding:10px 12px;border-radius:9px;border:1px solid var(--rx-line);background:var(--rx-soft);color:var(--rx-muted)}
+.phone-message.ok{border-color:#d1ebdf;background:#eaf6f0;color:#267b61}
+.phone-message.warn,.phone-notice{border-color:#f1debd;background:#fff5e5;color:#916628}
+.phone-message.error{border-color:#f2d5db;background:#fff0f2;color:#b74755}
+html[data-theme=dark] .phone-message.ok{background:#183b35;color:#91dfbf;border-color:#285148}
+html[data-theme=dark] .phone-message.warn,html[data-theme=dark] .phone-notice{background:#3a2e21;color:#f0ce93;border-color:#594a33}
+html[data-theme=dark] .phone-message.error{background:#3e2837;color:#f1b2bd;border-color:#60414d}
+
+.phone-row{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.phone-row + .phone-row{margin-top:11px}
+.phone-dial{flex:1;min-width:120px;background:var(--rx-card);border:1px solid var(--rx-line);color:var(--rx-ink);border-radius:9px;padding:11px 12px;font-size:11px;letter-spacing:1px;outline:none}
+.phone-dial:focus{border-color:#ceab70;box-shadow:0 0 0 3px #f7b95518}
+.phone-dial::placeholder{color:var(--rx-muted);font-size:9px;letter-spacing:0}
+
+.phone-incoming{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:15px 0 0;padding:14px;border:1px solid var(--rx-gold);border-radius:11px;background:var(--rx-soft)}
+.phone-incoming strong{font-size:13px;letter-spacing:1px;color:var(--rx-ink)}
+.phone-incoming .phone-row{margin:0}
+
+.phone-controls{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:15px;padding-top:15px;border-top:1px solid var(--rx-line)}
+.phone-timer{font:300 24px/1.2 Arial,sans-serif;letter-spacing:2px;color:#a58148;min-width:74px}
+html[data-theme=dark] .phone-timer{color:#f0ce93}
+
+.phone-directory{margin-top:18px;padding-top:16px;border-top:1px solid var(--rx-line)}
+.phone-directory h3{font-size:10px;font-weight:500;color:var(--rx-ink);margin:0 0 12px}
+.phone-directory ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.phone-directory-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--rx-soft);border:1px solid var(--rx-line);border-radius:9px;padding:10px 12px;color:var(--rx-ink);font-size:10px;text-align:start}
+.phone-directory-item:hover{border-color:#cfab6e}
+.phone-directory-item .ext{font:10px Arial,sans-serif;letter-spacing:.5px;color:var(--rx-muted);direction:ltr}
+.phone-directory-item .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phone-directory-empty{grid-column:1/-1;font-size:9px;color:var(--rx-muted);line-height:1.9}
+
+@media(max-width:520px){
+  .phone-row .rx-btn{flex:1}
+  .phone-dial{flex-basis:100%}
+  .phone-incoming{align-items:stretch}
+  .phone-incoming .phone-row{width:100%}
+}

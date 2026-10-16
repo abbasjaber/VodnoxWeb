@@ -46,6 +46,7 @@ use App\Http\Controllers\User\DashboardController as UserDashboard;
 use App\Http\Controllers\User\HistoryController as UserHistory;
 use App\Http\Controllers\User\IncomingController as UserIncoming;
 use App\Http\Controllers\User\ReceptionController as UserReception;
+use App\Http\Controllers\User\TelephonyController as UserTelephony;
 use App\Http\Controllers\User\VoicemailController as UserVoicemail;
 use Illuminate\Support\Facades\Route;
 
@@ -189,6 +190,7 @@ Route::middleware(['auth', 'tenant', 'role:organization_admin,supervisor'])->pre
     Route::post('extensions', [CompanyExtension::class, 'store'])->name('extensions.store');
     Route::put('extensions/{extension}', [CompanyExtension::class, 'update'])->name('extensions.update');
     Route::delete('extensions/{extension}', [CompanyExtension::class, 'destroy'])->name('extensions.destroy');
+    Route::post('extensions/{extension}/retry', [CompanyExtension::class, 'retry'])->name('extensions.retry');
 
     // Call queues
     Route::get('queues', [CompanyQueue::class, 'index'])->name('queues.index');
@@ -320,4 +322,16 @@ Route::middleware(['auth', 'tenant'])->prefix('user')->name('user.')->group(func
 
     Route::get('reception', [UserReception::class, 'index'])->name('reception.index');
     Route::post('reception', [UserReception::class, 'store'])->name('reception.store');
+
+    /*
+    | Telephony (browser phone). Credentials are per-user, uncached and gated
+    | by the employee's own account/extension state.
+    */
+    Route::get('telephony/credentials', [UserTelephony::class, 'credentials'])->name('telephony.credentials');
+    Route::post('telephony/provision', [UserTelephony::class, 'provision'])
+        ->middleware('throttle:6,1')
+        ->name('telephony.provision');
+    Route::post('telephony/registration', [UserTelephony::class, 'registration'])
+        ->middleware('throttle:30,1')
+        ->name('telephony.registration');
 });

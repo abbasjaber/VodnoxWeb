@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Models\Organization;
+use App\Services\Telephony\CallEventService;
 use App\Services\Telephony\TelephonyWebhookService;
 use Illuminate\Http\Request;
 
@@ -10,14 +11,18 @@ use Illuminate\Http\Request;
  * Inbound telephony webhook (provider-agnostic).
  *
  * The endpoint is public but authenticated by an HMAC-SHA256 signature and is
- * idempotent by `event_id`. It is intentionally side-effect free beyond
- * recording the event: no call or usage rows are created here.
+ * idempotent by `event_id`. After the event is recorded exactly once, call
+ * lifecycle events (ringing/answered/ended/failed) are applied to the call log
+ * through a trusted endpoint->organization mapping.
  */
 class TelephonyWebhookController extends BaseApiController
 {
     public const SIGNATURE_HEADER = 'X-VODNOX-Signature';
 
-    public function __construct(private readonly TelephonyWebhookService $webhooks) {}
+    public function __construct(
+        private readonly TelephonyWebhookService $webhooks,
+        private readonly CallEventService $calls,
+    ) {}
 
     public function __invoke(Request $request)
     {
@@ -43,6 +48,11 @@ class TelephonyWebhookController extends BaseApiController
         $payload['organization_id'] = $this->resolveOrganizationId($payload['organization_id'] ?? null);
 
         $result = $this->webhooks->record($payload, is_string($signature) ? $signature : null);
+
+        // Only apply call state for a first-seen event; a retry is a no-op.
+        if (! $result['duplicate']) {
+            $this->calls->apply($payload);
+        }
 
         return $this->successResponse(
             message: __($result['duplicate'] ? 'api.webhook_duplicate' : 'api.webhook_received'),

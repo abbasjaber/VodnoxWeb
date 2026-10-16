@@ -5,9 +5,15 @@ namespace App\Contracts\Telephony;
 /**
  * Contract for the external telephony server (Asterisk/FreePBX/other).
  *
- * This is a documented contract only. No real connection is performed until
- * the institution supplies server credentials; until then the simulated
- * implementation is bound in the container.
+ * Two implementations exist:
+ *  - {@see \App\Telephony\HttpTelephonyGateway} talks to the VODNOX
+ *    provisioning agent over HTTPS (see deploy/telephony).
+ *  - {@see \App\Telephony\SimulatedTelephonyGateway} is used when no server is
+ *    configured and performs no network calls whatsoever.
+ *
+ * "Provision" is an idempotent reconcile (create-or-update) keyed by the
+ * identifiers in the payload; the `enabled` flag in the payload is what
+ * disables/enables the account on the server without losing its identity.
  */
 interface TelephonyGateway
 {
@@ -26,6 +32,22 @@ interface TelephonyGateway
      * @return array<string, mixed>
      */
     public function provisionExtension(array $payload): array;
+
+    /**
+     * Remove an extension/SIP account from the telephony server.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function deprovisionExtension(array $payload): array;
+
+    /**
+     * Remove an organization (its context and every account under it).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function deprovisionOrganization(array $payload): array;
 
     /**
      * Provision (or reconcile) an IVR menu with its options.

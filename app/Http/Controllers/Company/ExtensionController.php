@@ -5,17 +5,19 @@ namespace App\Http\Controllers\Company;
 use App\Http\Controllers\Concerns\ResolvesTenant;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Company\ExtensionRequest;
-use App\Jobs\ProvisionTelephonyJob;
 use App\Models\Extension;
-use App\Models\Organization;
 use App\Services\AuditService;
+use App\Services\Telephony\TelephonyProvisioningService;
 use Illuminate\Http\Request;
 
 class ExtensionController extends Controller
 {
     use ResolvesTenant;
 
-    public function __construct(private readonly AuditService $audit) {}
+    public function __construct(
+        private readonly AuditService $audit,
+        private readonly TelephonyProvisioningService $provisioning,
+    ) {}
 
     public function index(Request $request)
     {
@@ -29,10 +31,12 @@ class ExtensionController extends Controller
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($sub) use ($q) {
                     $sub->where('extension', 'like', "%{$q}%")
-                        ->orWhere('label', 'like', "%{$q}%");
+                        ->orWhere('label', 'like', "%{$q}%")
+                        ->orWhere('sip_username', 'like', "%{$q}%");
                 });
             })
-            ->when(in_array($status, ['inactive', 'active', 'provisioning', 'provisioned', 'failed'], true), fn ($query) => $query->where('status', $status))
+            ->when(in_array($status, ['inactive', 'active'], true), fn ($query) => $query->where('status', $status))
+            ->when(in_array($status, ['pending', 'synced', 'failed', 'disabled', 'removed'], true), fn ($query) => $query->where('provisioning_status', $status))
             ->orderBy('extension')
             ->paginate(15)
             ->withQueryString();
@@ -51,11 +55,13 @@ class ExtensionController extends Controller
             'user_id' => $data['user_id'] ?? null,
             'extension' => $data['extension'],
             'label' => $data['label'] ?? null,
-            'status' => $data['status'] ?? 'provisioning',
+            'status' => $data['status'] ?? 'active',
+            'provisioning_status' => 'pending',
         ]);
 
         $this->audit->log('extension.created', $extension, [], $extension->only(['extension', 'label', 'user_id', 'status']), null, $org->id);
-        $this->dispatchProvisioning($org, $extension);
+
+        $this->provisioning->syncExtension($extension);
 
         return redirect()->route('company.extensions.index')->with('status', __('company.created'));
     }
@@ -76,7 +82,13 @@ class ExtensionController extends Controller
         ])->save();
 
         $this->audit->log('extension.updated', $extension, $old, $extension->only(['extension', 'label', 'user_id', 'status']), null, $org->id);
-        $this->dispatchProvisioning($org, $extension);
+
+        if ($extension->status === 'active') {
+            $extension->forceFill(['disabled_at' => null])->save();
+            $this->provisioning->syncExtension($extension);
+        } else {
+            $this->provisioning->disableExtension($extension);
+        }
 
         return redirect()->route('company.extensions.index')->with('status', __('company.updated'));
     }
@@ -88,27 +100,26 @@ class ExtensionController extends Controller
 
         $this->audit->log('extension.deleted', $extension, ['extension' => $extension->extension, 'label' => $extension->label], [], null, $org->id);
 
+        $this->provisioning->deprovisionExtension($extension);
         $extension->delete();
 
         return redirect()->route('company.extensions.index')->with('status', __('company.deleted'));
     }
 
     /**
-     * Reconcile the extension with the telephony server (idempotent per content).
+     * Re-run provisioning for an extension whose sync failed or is stale.
      */
-    private function dispatchProvisioning(Organization $org, Extension $extension): void
+    public function retry(Request $request, Extension $extension)
     {
-        $payload = [
-            'organization_id' => $org->id,
-            'extension_id' => $extension->id,
-            'extension' => $extension->extension,
-            'label' => $extension->label,
-            'user_id' => $extension->user_id,
-            'status' => $extension->status,
-        ];
+        $org = $this->organization($request);
+        $this->authorizeTenant($org, $extension);
 
-        $key = 'extension:'.$extension->id.':'.sha1((string) json_encode($payload));
+        if ($extension->status === 'active') {
+            $this->provisioning->syncExtension($extension);
+        } else {
+            $this->provisioning->disableExtension($extension);
+        }
 
-        ProvisionTelephonyJob::dispatch('provision_extension', $org->id, $payload, $key, $extension->id);
+        return redirect()->route('company.extensions.index')->with('status', __('company.updated'));
     }
 }

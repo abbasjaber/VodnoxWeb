@@ -56,6 +56,20 @@ class User extends Authenticatable
         return $this->hasMany(Call::class);
     }
 
+    public function extensions(): HasMany
+    {
+        return $this->hasMany(Extension::class);
+    }
+
+    /**
+     * The telephony asset bound to this account, if any.
+     */
+    public function primaryExtension(): ?Extension
+    {
+        return $this->extensions()->whereNull('disabled_at')->orderBy('id')->first()
+            ?? $this->extensions()->orderBy('id')->first();
+    }
+
     public function isSuperAdmin(): bool
     {
         return $this->role?->name === 'super_admin' || $this->organization_id === null;

@@ -1,0 +1,31 @@
+# VODNOX telephony provisioning agent — client allow-list.
+#
+# Install as /etc/nginx/vodnox-allow.conf. It is included by
+# nginx/vodnox-provisioning.conf INSIDE the server block, immediately before a
+# "deny all;" — so if this file contains no "allow" line, the provisioning API
+# is closed to everyone. That is the safe default: it fails closed.
+#
+# What to put here
+# ----------------
+# The exact egress address of the host that runs the Laravel application
+# (vodnox.com) — not a guessed subnet. The application host is hosted
+# separately and may egress through a NAT address that is not on any internal
+# range, so this value must come from the requirements check (README §11):
+#
+#     curl -s https://ifconfig.me        # run on the Laravel host
+#     # or, if it egresses through a NAT pool, ask for the whole published pool.
+#
+# Then uncomment and set it, one line per address:
+#
+#     allow 203.0.113.10;
+#     allow 203.0.113.11;
+#
+# Do NOT use "allow all;", "0.0.0.0/0" or a wide subnet such as /16: this API
+# writes Asterisk configuration and can create or delete SIP accounts. The
+# signature (HMAC-SHA256) and HTTPS remain the primary controls; this list is
+# defence in depth, so keep it as narrow as the Laravel host's egress allows.
+#
+# IPv6, when the application host reaches the server over IPv6, is a separate
+# line:
+#
+#     allow 2001:db8::10;

@@ -3,18 +3,30 @@
 namespace App\Telephony;
 
 use App\Contracts\Telephony\TelephonyGateway;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * HTTP adapter for a real telephony control API. It is only bound when a server
- * with a base URL and token is configured (see AppServiceProvider). Credentials
- * come from the encrypted telephony_servers row, never from the request.
+ * HTTP adapter for the VODNOX telephony provisioning agent.
+ *
+ * Every request is authenticated the same way the agent verifies it:
+ *
+ *   Authorization:     Bearer <token>
+ *   X-VODNOX-Timestamp <unix seconds>
+ *   X-VODNOX-Nonce     <random, single-use>
+ *   X-VODNOX-Signature sha256=<hmac over "timestamp.nonce.rawBody">
+ *   Idempotency-Key    <stable key for the operation>
+ *
+ * The signature covers the exact bytes that are sent, so the agent can reject
+ * replays (fresh nonce + timestamp window) and tampering before any state is
+ * written. Credentials come from config/encrypted rows, never from a request.
  */
 class HttpTelephonyGateway implements TelephonyGateway
 {
     /**
-     * @param  array{base_url: string, token?: string, timeout?: int}  $config
+     * @param  array{base_url: string, token?: string, signing_secret?: string, timeout?: int, connect_timeout?: int, verify?: bool}  $config
      */
     public function __construct(private readonly array $config) {}
 
@@ -26,6 +38,16 @@ class HttpTelephonyGateway implements TelephonyGateway
     public function provisionExtension(array $payload): array
     {
         return $this->post('/extensions', $payload);
+    }
+
+    public function deprovisionExtension(array $payload): array
+    {
+        return $this->delete('/extensions/'.$this->identifier($payload));
+    }
+
+    public function deprovisionOrganization(array $payload): array
+    {
+        return $this->delete('/organizations/'.$this->identifier($payload));
     }
 
     public function provisionIvr(array $payload): array
@@ -63,20 +85,89 @@ class HttpTelephonyGateway implements TelephonyGateway
      */
     private function post(string $path, array $payload): array
     {
-        if (empty($this->config['base_url'])) {
-            throw new RuntimeException('Telephony server base URL is not configured.');
-        }
+        $body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $body = $body === false ? '{}' : $body;
 
-        $response = $this->client()->post($path, $payload);
+        $response = $this->signed($body)
+            ->withHeaders([
+                'Idempotency-Key' => $this->idempotencyKey($path, $payload),
+            ])
+            ->withBody($body, 'application/json')
+            ->post($path);
+
         $response->throw();
 
         return $response->json() ?? [];
     }
 
-    private function client(): \Illuminate\Http\Client\PendingRequest
+    /**
+     * @return array<string, mixed>
+     */
+    private function delete(string $path): array
     {
+        $body = '';
+
+        $response = $this->signed($body)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey($path, [])])
+            ->withBody($body, 'application/json')
+            ->delete($path);
+
+        $response->throw();
+
+        return $response->json() ?? [];
+    }
+
+    /**
+     * Attach the timestamp/nonce/signature trio for the given raw body.
+     */
+    private function signed(string $body): PendingRequest
+    {
+        $timestamp = (string) time();
+        $nonce = (string) Str::uuid();
+        $secret = (string) ($this->config['signing_secret'] ?? '');
+
+        $signature = 'sha256='.hash_hmac('sha256', $timestamp.'.'.$nonce.'.'.$body, $secret);
+
+        return $this->client()->withHeaders([
+            'X-VODNOX-Timestamp' => $timestamp,
+            'X-VODNOX-Nonce' => $nonce,
+            'X-VODNOX-Signature' => $signature,
+        ]);
+    }
+
+    /**
+     * A stable key so retries of the same content are collapsed by the agent.
+     */
+    private function idempotencyKey(string $path, array $payload): string
+    {
+        return 'vodnox:'.substr(sha1($path.'|'.json_encode($payload)), 0, 40);
+    }
+
+    /**
+     * The path identifier used for deprovisioning (sip_username or org code).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function identifier(array $payload): string
+    {
+        $value = $payload['sip_username'] ?? $payload['context'] ?? $payload['code'] ?? null;
+
+        if (! is_string($value) || $value === '') {
+            throw new RuntimeException('Missing identifier for deprovisioning.');
+        }
+
+        return rawurlencode($value);
+    }
+
+    private function client(): PendingRequest
+    {
+        if (empty($this->config['base_url'])) {
+            throw new RuntimeException('Telephony provisioning URL is not configured.');
+        }
+
         $client = Http::baseUrl($this->config['base_url'])
             ->timeout($this->config['timeout'] ?? 15)
+            ->connectTimeout($this->config['connect_timeout'] ?? 5)
             ->acceptJson();
 
         if (! empty($this->config['token'])) {

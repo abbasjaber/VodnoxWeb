@@ -4,16 +4,21 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "build:telephony": "esbuild resources/js/telephony-sip-entry.js --bundle --minify --format=iife --target=es2020 --outfile=public/assets/vodnox/vendor/sip.min.js"
     },
     "devDependencies": {
         "@popperjs/core": "^2.11.6",
         "axios": "^1.11.0",
         "bootstrap": "^5.3.3",
+        "esbuild": "^0.25.0",
         "laravel-vite-plugin": "^2.0.0",
         "postcss": "^8.4.38",
         "rtlcss": "^4.1.1",
         "sass": "^1.56.1",
         "vite": "^7.0.7"
+    },
+    "dependencies": {
+        "sip.js": "0.21.2"
     }
 }

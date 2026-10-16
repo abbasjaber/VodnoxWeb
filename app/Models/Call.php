@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Call extends Model
 {
     protected $fillable = [
-        'organization_id', 'external_call_id', 'user_id', 'customer_id',
-        'direction', 'caller_number', 'callee_number', 'status',
+        'organization_id', 'external_call_id', 'sip_call_id', 'user_id', 'customer_id',
+        'direction', 'caller_number', 'callee_number', 'caller_extension', 'callee_extension', 'status',
         'started_at', 'answered_at', 'ended_at', 'duration_seconds',
         'billable_seconds', 'recording_path', 'notes',
     ];

@@ -8,13 +8,17 @@ use App\Http\Requests\Company\TeamMemberRequest;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\Telephony\TelephonyProvisioningService;
 use Illuminate\Http\Request;
 
 class TeamController extends Controller
 {
     use ResolvesTenant;
 
-    public function __construct(private readonly AuditService $audit) {}
+    public function __construct(
+        private readonly AuditService $audit,
+        private readonly TelephonyProvisioningService $provisioning,
+    ) {}
 
     public function index(Request $request)
     {
@@ -72,6 +76,8 @@ class TeamController extends Controller
             $org->id,
         );
 
+        $this->syncMemberTelephony($user, $data['extension'] ?? null);
+
         return redirect()->route('company.team.index')->with('status', __('company.created'));
     }
 
@@ -109,6 +115,8 @@ class TeamController extends Controller
             $org->id,
         );
 
+        $this->syncMemberTelephony($member->refresh(), $data['extension'] ?? null);
+
         return redirect()->route('company.team.index')->with('status', __('company.updated'));
     }
 
@@ -118,6 +126,11 @@ class TeamController extends Controller
         $this->authorizeTenant($org, $member);
 
         abort_if($member->getKey() === $request->user()->getKey(), 403, __('company.cannot_delete_self'));
+
+        // Withdraw the SIP account first so the server stops accepting it.
+        $member->extensions()
+            ->get()
+            ->each(fn ($extension) => $this->provisioning->deprovisionExtension($extension));
 
         $this->audit->log(
             'team.member.deleted',
@@ -131,5 +144,29 @@ class TeamController extends Controller
         $member->delete();
 
         return redirect()->route('company.team.index')->with('status', __('company.deleted'));
+    }
+
+    /**
+     * Keep the employee's telephony asset in sync with their account state.
+     */
+    private function syncMemberTelephony(User $member, ?string $number): void
+    {
+        if (! $this->provisioning->isEligible($member)) {
+            return;
+        }
+
+        if (! $member->active) {
+            $member->extensions()
+                ->get()
+                ->each(fn ($extension) => $this->provisioning->disableExtension($extension));
+
+            return;
+        }
+
+        $extension = $this->provisioning->ensureExtensionForUser($member, $number);
+
+        if ($extension) {
+            $this->provisioning->syncExtension($extension);
+        }
     }
 }

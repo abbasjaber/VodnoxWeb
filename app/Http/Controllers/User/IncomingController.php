@@ -85,11 +85,12 @@ class IncomingController extends Controller
             ->where('organization_id', $organization->id)
             ->where('active', true)
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'extension']);
 
         return view($this->view, [
             'organization' => $organization,
             'session' => $session,
+            'liveSession' => $session !== null && ! $this->isLocalSession($session),
             'draftWrapup' => $draftWrapup,
             'notes' => $notes,
             'complaints' => $complaints,
@@ -99,6 +100,15 @@ class IncomingController extends Controller
             'departments' => $departments,
             'agents' => $agents,
         ]);
+    }
+
+    /**
+     * True when the call row came from a real telephony session rather than the
+     * manual (local) workspace.
+     */
+    protected function isLocalSession(Call $call): bool
+    {
+        return str_starts_with((string) $call->external_call_id, self::SESSION_PREFIX);
     }
 
     public function store(CallPanelRequest $request)
@@ -312,12 +322,16 @@ class IncomingController extends Controller
             ->first();
     }
 
+    /**
+     * The call the agent is currently documenting: either a real telephony
+     * call (created from signed server events) or a manual local session.
+     */
     protected function activeCall($organization, $user): ?Call
     {
         return Call::query()
             ->where('organization_id', $organization->id)
             ->where('user_id', $user->id)
-            ->where('external_call_id', 'like', self::SESSION_PREFIX.'%')
+            ->whereIn('status', ['ringing', 'answered'])
             ->whereDoesntHave('wrapup', fn ($query) => $query->where('is_completed', true))
             ->orderByDesc('id')
             ->first();

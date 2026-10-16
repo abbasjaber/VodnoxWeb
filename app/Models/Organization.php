@@ -13,10 +13,13 @@ class Organization extends Model
     protected $fillable = [
         'code', 'name_ar', 'name_en', 'contact_name', 'email', 'phone',
         'city', 'status', 'timezone', 'language', 'internal_notes', 'activated_at',
+        'telephony_context', 'telephony_realm', 'telephony_status',
+        'telephony_error', 'telephony_synced_at',
     ];
 
     protected $casts = [
         'activated_at' => 'datetime',
+        'telephony_synced_at' => 'datetime',
     ];
 
     public function users(): HasMany

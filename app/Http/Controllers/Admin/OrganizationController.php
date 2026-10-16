@@ -16,13 +16,16 @@ use App\Models\Recording;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\Telephony\TelephonyProvisioningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class OrganizationController extends Controller
 {
-    public function __construct(private readonly AuditService $audit)
-    {
+    public function __construct(
+        private readonly AuditService $audit,
+        private readonly TelephonyProvisioningService $provisioning,
+    ) {
     }
 
     public function index(Request $request)
@@ -89,6 +92,9 @@ class OrganizationController extends Controller
         });
 
         $this->audit->log('organization.created', $organization, [], ['code' => $organization->code], null, $organization->id);
+
+        // Provision a dedicated, isolated telephony context for the organization.
+        $this->provisioning->syncOrganizationEnabledState($organization);
 
         return redirect()->route('admin.organizations.show', $organization)
             ->with('status', __('admin.flash_created'));
@@ -161,12 +167,21 @@ class OrganizationController extends Controller
 
         $this->audit->log('organization.status_updated', $organization, $old, ['status' => $organization->status], null, $organization->id);
 
+        // Activation enables the whole context; suspension disables every
+        // account on the telephony server, not just the Laravel UI.
+        $this->provisioning->syncOrganizationEnabledState($organization);
+
         return back()->with('status', __('admin.flash_status'));
     }
 
     public function destroy(Organization $organization)
     {
         $old = ['code' => $organization->code, 'name' => $organization->name_ar];
+
+        // Remove the telephony context before the row is soft-deleted so the
+        // server stops accepting registrations for the organization.
+        $this->provisioning->deprovisionOrganization($organization);
+
         $organization->delete();
 
         $this->audit->log('organization.deleted', null, $old, [], null, $organization->id);

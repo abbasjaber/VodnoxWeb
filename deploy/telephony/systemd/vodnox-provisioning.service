@@ -1,0 +1,35 @@
+[Unit]
+Description=VODNOX telephony provisioning agent (php-fpm)
+After=network-online.target asterisk.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# A dedicated php-fpm master so the agent can run as the Asterisk user without
+# widening the permissions of the system-wide pool.
+#
+# The @...@ values are substituted by bin/install.sh from what is actually
+# installed on this host — the agent's PHP version is independent of the PHP
+# that hosts Laravel, so neither path is hard-coded here. If you install this
+# unit by hand, replace them with the real paths first.
+ExecStart=@PHP_FPM_BIN@ --nodaemonize --fpm-config @PHP_FPM_CONF@
+ExecReload=/bin/kill -USR2 $MAINPID
+Restart=on-failure
+RestartSec=3
+
+# Hardening: the service only ever needs the Asterisk config tree, its own
+# state directory and the run directory for its socket.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/etc/asterisk/vodnox /var/lib/vodnox-telephony /var/log /run
+
+[Install]
+WantedBy=multi-user.target

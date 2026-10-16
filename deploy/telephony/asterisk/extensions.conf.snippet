@@ -1,0 +1,23 @@
+; ---------------------------------------------------------------------------
+; VODNOX — dialplan include for internal calls.
+; ---------------------------------------------------------------------------
+; Add to /etc/asterisk/extensions.conf, after the [general] section:
+;
+;     #include vodnox/dialplan/*.conf
+;
+; The agent writes one file per organization, e.g.:
+;
+;     [vodnox_org_5]
+;     exten => 1001,1,NoOp(VODNOX internal call to 1001)
+;      same => n,Dial(PJSIP/vdx5abc...,30)
+;      same => n,Hangup()
+;     exten => _X.,1,NoOp(VODNOX unknown extension)
+;      same => n,Hangup(404)
+;
+; Isolation: each endpoint is bound to its own organization's context, so an
+; employee can only reach numbers inside that context. There is no include of a
+; shared or public context and no fall-through, which is what lets two
+; organizations both use "1001" without reaching each other.
+;
+; Reload with:  asterisk -rx "dialplan reload"
+; ---------------------------------------------------------------------------
