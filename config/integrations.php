@@ -44,6 +44,17 @@ return [
     ],
 
     /*
+    | Telephony gateway (provider-agnostic contract).
+    |
+    | The webhook secret signs inbound telephony events (HMAC-SHA256). It must
+    | be provided by the institution alongside the server credentials; until
+    | then inbound webhooks are rejected as "not configured".
+    */
+    'telephony' => [
+        'webhook_secret' => env('TELEPHONY_WEBHOOK_SECRET'),
+    ],
+
+    /*
     | Logging channel used by all integrations.
     */
     'log_channel' => env('INTEGRATION_LOG_CHANNEL', 'integrations'),

@@ -1,453 +1,261 @@
-# VODNOX — Cloud PBX / Contact Center SaaS (Foundation)
+# VODNOX — Cloud PBX / Contact Center SaaS
 
-VODNOX is a multi-tenant Cloud PBX / Contact Center platform built on Laravel.
-This repository contains the **technical foundation only**: backend scaffolding,
-authentication, API structure, localization, queues, and integration plumbing.
-No business modules, dashboards, or UI pages are included in this phase.
+VODNOX منصّة سحابية متعدّدة المؤسسات (Multi-tenant) لإدارة المقاسم الهاتفية
+ومراكز الاتصال، مبنية على Laravel. يحتوي هذا المستودع على **التطبيق الكامل**:
+الموقع العام، لوحة السوبر أدمن، لوحة مسؤول المؤسسة، واجهات الموظف والاستقبال،
+وحدة CRM، وحدة VODNOX FORMS، إعدادات الاتصالات والتوجيه وIVR، وبوابة الاتصالات
+(بعقد موثّق ومحاكاة صريحة).
 
----
-
-## 1. Technology Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | Laravel 12 (latest 12.x) |
-| PHP | 8.2 (fixed) |
-| Database | MySQL (utf8mb4) |
-| Frontend (later) | Blade Views + Bootstrap 5 (RTL/LTR) |
-| Auth | Laravel UI (session-based, backend only) |
-| Queues | Database driver |
-| Localization | Arabic (default) + English |
-
-**Forbidden in this phase:** React, Vue, Livewire, Alpine, jQuery, Tailwind,
-Breeze, Jetstream, Sanctum, Passport, Redis, Asterisk, any business module.
+> التطبيق يعمل بشكل كامل ومستقل عن مجلد مرفقات التصميم `VODNOX-Full-Handoff/`.
+> راجع [ATTACHMENT_INDEPENDENCE_REPORT.md](ATTACHMENT_INDEPENDENCE_REPORT.md).
 
 ---
 
-## 2. Installation
+## 1. حزمة التقنيات
 
-### Prerequisites
+| الطبقة | التقنية |
+|--------|---------|
+| الإطار | Laravel 12 (12.x) |
+| PHP | 8.2 (ثابت) |
+| قاعدة البيانات | MySQL (utf8mb4 / utf8mb4_unicode_ci) |
+| الواجهات | Blade Views (بدون Components) + Bootstrap 5 + JavaScript أصلي |
+| المصادقة | Laravel UI (جلسات، username/password) |
+| الطوابير | مشغّل database |
+| اللغات | العربية (افتراضي) + الإنجليزية (بديل)، RTL/LTR |
+| المنطقة الزمنية | التخزين UTC، العرض والجداول `Asia/Baghdad` |
 
-- PHP 8.2+
+**ممنوع في هذا المشروع:** React، Vue، Inertia، Livewire، Alpine، Tailwind،
+jQuery، Breeze، Jetstream، Sanctum، Passport، Redis، Asterisk/SIP/WebRTC حقيقي،
+أي ذكاء اصطناعي فعلي للمجيب الذكي.
+
+---
+
+## 2. المتطلبات
+
+- PHP 8.2+ مع إضافات `pdo_mysql`, `mbstring`, `openssl`, `json`, `ctype`, `fileinfo`
 - Composer 2.x
 - MySQL 8+
-- Node.js 20+ (for building frontend assets only — not required in production)
+- (اختياري للتطوير فقط) Node.js 20+ — الإنتاج لا يحتاج npm.
 
-### Steps
+---
+
+## 3. التثبيت
 
 ```bash
-# 1. Install PHP dependencies
+# 1) اعتماديات PHP
 composer install
 
-# 2. Create environment file
+# 2) ملف البيئة
 cp .env.example .env
-
-# 3. Generate application key
 php artisan key:generate
 
-# 4. Configure MySQL in .env:
-#    DB_CONNECTION=mysql
-#    DB_HOST=127.0.0.1
-#    DB_PORT=3306
-#    DB_DATABASE=vodnox
-#    DB_USERNAME=root
-#    DB_PASSWORD=
+# 3) إعداد قاعدة البيانات في .env
+#    DB_CONNECTION=mysql / DB_HOST / DB_PORT / DB_DATABASE=vodnox / DB_USERNAME / DB_PASSWORD
 
-# 5. Run migrations
+# 4) الترحيلات + البيانات المرجعية (أدوار/صلاحيات/Features — بلا بيانات دخول)
 php artisan migrate
+php artisan db:seed
 
-# 6. Install & build frontend assets (Bootstrap 5 LTR + RTL)
-npm install
-npm run build
+# 5) إنشاء حساب السوبر أدمن الإنتاجي (تفاعلي — لا حساب افتراضي)
+php artisan vodnox:create-admin
 
-# 7. Start the development server
+# 6) تشغيل السيرفر
 php artisan serve
 ```
 
----
-
-## 3. MySQL Setup
-
-Create the database with `utf8mb4` charset (required for full Arabic/Unicode
-support):
+### إعداد قاعدة البيانات (utf8mb4 إلزامي للعربية)
 
 ```sql
 CREATE DATABASE vodnox CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE vodnox_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-The default connection in `config/database.php` already uses `utf8mb4` /
-`utf8mb4_unicode_ci`.
+> **ملاحظة:** لا تستخدم `migrate:fresh` على قاعدة قائمة. الترحيلات كلها إضافية
+> وغير مدمرة.
 
 ---
 
-## 4. Folder Structure
+## 4. متغيرات البيئة الأساسية
+
+| المتغير | الوصف |
+|---------|-------|
+| `APP_NAME=VODNOX` | اسم التطبيق |
+| `APP_LOCALE=ar` / `APP_FALLBACK_LOCALE=en` | اللغة والبديل |
+| `DB_*` | اتصال MySQL |
+| `SESSION_DRIVER=database` | الجلسات |
+| `QUEUE_CONNECTION=database` | الطوابير |
+| `CORS_ALLOWED_ORIGINS` | أصول مسموحة (بلا `*` مع credentials) |
+| `TELEPHONY_WEBHOOK_SECRET` | سر توقيع Webhooks الاتصالات (HMAC-SHA256) — فارغ حتى توفّر بيانات الربط |
+| `ASTERISK_*` | إعدادات AMI (مؤجّلة) |
+
+`.env.example` **لا يحتوي أي أسرار** (R12). كل بيانات الاعتماد تُقرأ عبر
+`config/*` ولا يُستدعى `env()` مباشرة داخل الخدمات أو المتحكّمات.
+
+---
+
+## 5. البنية
 
 ```
 app/
+├── Console/Commands/        # vodnox:create-admin
+├── Contracts/Telephony/     # TelephonyGateway (العقد الموثّق)
 ├── Http/
 │   ├── Controllers/
-│   │   ├── Api/
-│   │   │   ├── ApiResponse.php          # Unified JSON response trait
-│   │   │   └── V1/
-│   │   │       ├── BaseApiController.php
-│   │   │       └── HealthController.php
-│   │   ├── Auth/
-│   │   │   └── LoginController.php       # Backend-only session auth
-│   │   ├── Web/                          # (reserved for future web controllers)
-│   │   └── Controller.php
-│   ├── Middleware/
-│   │   └── SetLocale.php                 # ar/en from session (web) or Accept-Language (API)
-│   ├── Requests/                         # (reserved for Form Requests)
-│   └── Resources/                        # (reserved for API Resources)
-├── Integrations/
-│   └── BaseIntegration.php               # HTTP client, logging, secret redaction
-├── Models/
-├── Providers/
-│   └── AppServiceProvider.php            # Rate limiters (login, api)
-└── Services/
-    └── BaseService.php                   # Business logic base class
-
-config/
-├── app.php              # APP_NAME=VODNOX, timezone=Asia/Baghdad, locale=ar
-├── cors.php             # Restricted origins, no credentials
-├── integrations.php     # External service credentials from .env
-├── database.php         # MySQL utf8mb4
-└── logging.php          # "integrations" channel
-
-lang/
-├── ar/                  # Arabic (default): auth, api, validation, pagination, passwords
-└── en/                  # English (fallback): same keys
-
-routes/
-├── web.php              # /, /login, /logout (session auth, JSON responses)
-├── api.php              # /api/v1/health (rate-limited)
-└── console.php          # Scheduler (empty in this phase)
-
-resources/
-├── sass/
-│   ├── _variables.scss
-│   ├── app-ltr.scss     # Bootstrap 5 LTR
-│   └── app-rtl.scss     # Bootstrap 5 RTL (pre-built)
-└── js/
-    ├── app.js
-    └── bootstrap.js     # Bootstrap JS + axios
+│   │   ├── Admin/           # 12 متحكّم — لوحة السوبر أدمن
+│   │   ├── Company/         # 22 متحكّم — لوحة المؤسسة (اتصالات/CRM/FORMS)
+│   │   ├── User/            # 7 متحكّمات — واجهات الموظف والاستقبال
+│   │   ├── Public/          # الموقع العام + النماذج العامة
+│   │   ├── Auth/            # تسجيل الدخول
+│   │   ├── Api/V1/          # Health + Telephony Webhook
+│   │   └── Concerns/        # ResolvesTenant (عزل المؤسسة)
+│   ├── Middleware/          # SetLocale, EnsureActiveOrganization, RoleMiddleware, EnsureFeatureSubscription
+│   └── Requests/            # Form Requests (Admin/Company/Crm/Forms/Portal)
+├── Jobs/                    # ProvisionTelephonyJob (retry/backoff/idempotency)
+├── Models/                  # 55 موديلاً
+├── Services/
+│   ├── Forms/               # FormDefinitionValidator, FormPublishService, FormSubmissionService
+│   ├── Routing/             # ScheduleMatcher (توقيت بغداد)
+│   ├── Telephony/           # TelephonyWebhookService (HMAC + idempotency)
+│   ├── AuditService.php, SettingsService.php, SubscriptionService.php
+├── Telephony/               # SimulatedTelephonyGateway, HttpTelephonyGateway
+resources/views/             # 83 ملف Blade (بدون Components)
+routes/web.php               # 143 مساراً (يستثني الحزم)
+routes/api.php               # /api/v1
+lang/{ar,en}/                # ترجمات كاملة
 ```
 
 ---
 
-## 5. Localization (Arabic / English)
+## 6. الأدوار والصلاحيات
 
-- **Default locale:** `ar` (Arabic)
-- **Fallback locale:** `en` (English)
-- **Web:** locale is read from the session key `locale`.
-- **API:** locale is read from the `Accept-Language` header.
-- Only `ar` and `en` are accepted; any other value falls back to the default.
-- Translatable strings are stored in `lang/ar/` and `lang/en/` — never hard-coded
-  in controllers.
+| الدور | النطاق | الوجهة بعد الدخول |
+|-------|--------|-------------------|
+| `super_admin` | المنصة (بلا مؤسسة) | `/admin` |
+| `organization_admin` | مؤسسته | `/company` |
+| `supervisor` | مؤسسته | `/company` |
+| `agent` | مؤسسته | `/user` |
+| `viewer` | قراءة فقط | `/user` |
 
-### RTL / LTR for future views
-
-Bootstrap 5 ships as two separate compiled CSS files:
-
-| File | Usage |
-|------|-------|
-| `app-ltr-*.css` | English interface (set `<html dir="ltr">`) |
-| `app-rtl-*.css` | Arabic interface (set `<html dir="rtl">`) |
-
-Both are produced by `npm run build` and registered in `public/build/manifest.json`.
+- العزل مطبّق على مستوى **السجلات والطلبات والملفات والتصدير** عبر
+  `ResolvesTenant` (اشتقاق المؤسسة من المستخدم، وعدم الثقة بـ `organization_id`
+  القادم من الطلب) وليس Middleware الدور فقط.
+- المصادقة: username/password، CSRF، تجديد الجلسة، خروج POST،
+  rate-limit 5 محاولات/دقيقة لكل بريد+IP. لا تسجيل عام.
 
 ---
 
-## 6. Authentication (Backend Only)
+## 7. الوحدات
 
-Authentication is provided by **Laravel UI** with session-based guards.
-**No login/register/dashboard views are shipped.** The login and logout
-endpoints return JSON so the backend can be tested without a UI.
+### 7.1 الموقع العام
+الرئيسية، الخدمات، الأسعار، من نحن، اتصل بنا، الدخول.
+نموذج «اتصل بنا» يحفظ في `contact_inquiries`. الأسعار قابلة للضبط من السوبر أدمن.
 
-### Endpoints
+### 7.2 السوبر أدمن (`/admin`)
+Overview، المؤسسات (CRUD + تفاصيل بتبويبات: معلومات، اشتراك، مستخدمون،
+تحويلات/أرقام، IVR/طوابير، استخدام، تسجيلات، فواتير، نشاط)، الاشتراكات،
+الباقات والحدود، الفواتير والمدفوعات، الاستخدام، خوادم الاتصالات، التكاملات،
+الفريق والصلاحيات، سجل النشاط، إعدادات المنصة، وإدارة اشتراكات
+CRM / FORMS / Smart IVR.
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/login` | Authenticate with `email` + `password` |
-| POST | `/logout` | Invalidate session + regenerate CSRF token |
+### 7.3 مسؤول المؤسسة (`/company`)
+Overview، الموظفون والأدوار، الأقسام، الأجهزة/التحويلات، طوابير الاتصال، IVR،
+الأرقام ومسارات الاتصال، سجل المكالمات، التسجيلات، تقارير الأداء، اشتراك
+المؤسسة والفواتير، الإعدادات، سجل النشاط.
 
-- Public **registration is disabled** (no register routes).
-- Password reset and email verification are not enabled in this phase.
-- Session is regenerated on login; invalidated + CSRF regenerated on logout.
-- Login is rate-limited to **5 attempts/minute** per email+IP.
-- Logout requires authentication and uses **POST** (not GET).
+### 7.4 الموظف والاستقبال (`/user`)
+لوحة الاتصال، دليل المؤسسة والمفضّلة، السجل الشخصي، البريد الصوتي، المهام،
+الحساب، صفحتا `incoming` و`reception` مع حفظ الملاحظات والشكاوى والمتابعة
+وملخّص ما بعد المكالمة. لا بدء استقبال جديد قبل حفظ الملخّص، والمسودة لا تُفقد.
 
-### Verifying Auth Without UI
+### 7.5 CRM (باشتراك مستقل)
+العملاء وملفاتهم، جهات الاتصال، الملاحظات، التفاعلات، الفرص والمراحل، المهام،
+الشكاوى، التقارير. التحقق من التفعيل والفترة والحدود خادمياً عند كل عملية؛
+التعليق/الانتهاء يحجب العمل دون مسح البيانات.
 
-```bash
-# Start the server
-php artisan serve
+### 7.6 VODNOX FORMS (باشتراك مستقل)
+منشئ نماذج بـ 11 نوع حقل، ترتيب، شروط ظهور، تسمية/مساعدة/إلزام، حدود، هوية،
+نشر، رسالة شكر. روابط عامة بـ **Permanent opaque tokens** (`/f/{token}`) من
+الخادم — لا snapshot في الـ fragment. الردود تُحفظ مركزياً مع تحقق خادمي من
+الاشتراك والنشر والمهلة والحصّة والحقول والشروط، وحماية الحصّة المتزامنة عبر
+transaction + `lockForUpdate`، وإصدار schema عند النشر، وتصدير CSV آمن
+(BOM + حماية الصيغ).
 
-# Create a test user via tinker
-php artisan tinker
->>> App\Models\User::factory()->create(['email' => 'a@b.c', 'password' => 'password123']);
+### 7.7 إعدادات الاتصالات وIVR العادي (مضمّنان تلقائياً)
+متاحان تلقائياً لكل مؤسسة مفعّلة **دون اشتراك إضافة**، ولا تظهر للموظفين.
+جداول بأيام/أوقات بغداد لموظف واحد أو اثنين، متزامن أو متتابع، رنين 5–120ث،
+منع التكرار والتداخل وبداية=النهاية، دعم منتصف الليل والنهاية الحصرية.
+مسارات عدم الرد/الافتراضي/خارج الدوام: بريد صوتي، رسالة ثم إنهاء، إنهاء،
+موظف بديل (مرة واحدة 20ث ثم بريد صوتي — لا دوران). IVR: ترحيب AR/EN، أزرار
+0–9 فريدة، timeout 3–30، 0–3 إعادة، مساري نفاد. أداة اختبار المسار محاكاة فقط
+ولا تُنشئ مكالمات أو usage.
 
-# Get a session + XSRF cookie
-curl -c cookies.txt http://127.0.0.1:8000/
+### 7.8 المجيب الآلي الذكي (قريباً)
+اشتراك مستقل بحالات inactive/active/suspended يفعّله السوبر أدمن. عند `active`
+يظهر قسم «قريباً» لمسؤول المؤسسة فقط؛ عند التعليق يختفي ويُمنع الوصول المباشر
+خادمياً. لا AI ولا مفاتيح ولا محادثة.
 
-# Extract and decode the XSRF token
-XSRF=$(grep XSRF-TOKEN cookies.txt | awk '{print $7}' | python3 -c "import sys,urllib.parse;print(urllib.parse.unquote(sys.stdin.read().strip()))")
+---
 
-# Login
-curl -b cookies.txt -c cookies.txt -X POST http://127.0.0.1:8000/login \
-  -H "Content-Type: application/json" -H "X-XSRF-TOKEN: $XSRF" \
-  -d '{"email":"a@b.c","password":"password123"}'
+## 8. بوابة الاتصالات
 
-# Logout (refresh XSRF token after login first)
-XSRF=$(grep XSRF-TOKEN cookies.txt | awk '{print $7}' | python3 -c "import sys,urllib.parse;print(urllib.parse.unquote(sys.stdin.read().strip()))")
-curl -b cookies.txt -X POST http://127.0.0.1:8000/logout -H "X-XSRF-TOKEN: $XSRF"
-```
+- العقد الموثّق: [TelephonyGateway](file:///Users/hayderalkhafaji/Documents/trae_projects/vodnox/app/Contracts/Telephony/TelephonyGateway.php).
+- المحاكي: `SimulatedTelephonyGateway` (افتراضي — لا اتصال شبكي).
+- الـ Adapter الحقيقي: `HttpTelephonyGateway` يُربط فقط عند وجود خادم
+  بحالة `connected` في جدول `telephony_servers`.
+- Provisioning عبر `ProvisionTelephonyJob` مع retry/backoff/idempotency.
+- Webhooks موقّعة HMAC-SHA256 + idempotency بـ `event_id`، وترجع JSON دائماً.
+- التفاصيل الكاملة في [docs/TELEPHONY_API_CONTRACT.md](docs/TELEPHONY_API_CONTRACT.md).
 
-### Automated tests
+---
+
+## 9. الاختبارات
 
 ```bash
 php artisan test
 ```
 
-The test suite covers: login success/failure, logout, protected routes,
-rate limiting (429), validation errors (422), and JSON error responses.
+النتيجة الحالية: **95 اختباراً ناجحاً (217 تأكيداً)** في 10 ملفات تغطي:
+المصادقة، الأخطاء API، الترجمة، الصحة، **العزل بين مؤسستين (IDOR)**،
+**حدود الاشتراكات**، **شروط النماذج وحصص الردود**، **جداول التوجيه الليلية
+والتداخل**، **الفوترة**، و**Webhooks الاتصالات**.
+
+التفاصيل في [docs/TEST_REPORT.md](docs/TEST_REPORT.md).
 
 ---
 
-## 7. API
+## 10. النشر
 
-### Base URL
-
-```
-/api/v1
-```
-
-### Response Envelope
-
-Every API response uses this unified structure:
-
-```json
-{
-    "success": true,
-    "message": "Service is running.",
-    "data": { "status": "ok" },
-    "errors": null
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `success` | boolean | `true` on success, `false` on error |
-| `message` | string | Human-readable message (localized) |
-| `data` | mixed | Payload (null on error) |
-| `errors` | object \| null | Validation error map (null otherwise) |
-
-Paginated responses additionally include a `meta` object with `current_page`,
-`per_page`, `total`, `last_page`, `from`, `to`.
-
-### HTTP Status Codes
-
-| Status | Meaning |
-|--------|---------|
-| 200 | Success |
-| 201 | Created |
-| 401 | Unauthenticated |
-| 403 | Forbidden |
-| 404 | Not found |
-| 405 | Method not allowed |
-| 422 | Validation error |
-| 429 | Too many requests |
-
-All `/api/*` errors return **JSON** (never HTML or a redirect to login).
-Stack traces, SQL, and secrets are never exposed in responses.
-
-### Health Endpoint
-
-```
-GET /api/v1/health
-```
-
-Returns `200` with `{"status": "ok"}`. Does not expose versions or internals.
-
-### Rate Limiting
-
-- API: 60 requests/minute per user (or IP if unauthenticated).
-- Login: 5 attempts/minute per email+IP.
-
-### CORS
-
-Configured in `config/cors.php`. Allowed origins are read from
-`CORS_ALLOWED_ORIGINS` (comma-separated). `supports_credentials` is **false**,
-so credentials are never sent to arbitrary origins.
+دليل النشر الكامل (بيئة الإنتاج، التخزين المؤقت، الطوابير، المجدول، الأمان)
+في [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 
-## 8. Queues & Scheduler
+## 11. فهرس التوثيق
 
-### Queues
+| المستند | المحتوى |
+|---------|---------|
+| [docs/IMPLEMENTATION_MAP.md](docs/IMPLEMENTATION_MAP.md) | تصنيف الوظائف: منفذة ومختبرة / جزئية / غير منفذة |
+| [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | مخطط قاعدة البيانات (63 جدولاً) |
+| [docs/TELEPHONY_API_CONTRACT.md](docs/TELEPHONY_API_CONTRACT.md) | عقد بوابة الاتصالات والـ Webhooks |
+| [docs/TEST_REPORT.md](docs/TEST_REPORT.md) | تقرير الاختبارات |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | دليل النشر والتشغيل |
+| [ATTACHMENT_INDEPENDENCE_REPORT.md](ATTACHMENT_INDEPENDENCE_REPORT.md) | إثبات الاستقلالية عن المرفقات |
 
-- Driver: **database** (`QUEUE_CONNECTION=database`).
-- The `jobs` table is created by the default migrations.
-- Run a worker:
+---
+
+## 12. نتائج التحقّق
 
 ```bash
-php artisan queue:work --tries=3
-```
-
-### Scheduler
-
-- Registered in `routes/console.php` (empty in this phase).
-- Production cron entry:
-
-```cron
-* * * * * cd /path-to-vodnox && php artisan schedule:run >> /dev/null 2>&1
-```
-
----
-
-## 9. External Integrations
-
-The `app/Integrations/` directory and `config/integrations.php` are prepared
-for future integrations (Asterisk/AMI, payments, SMS, etc.).
-
-### Patterns enforced by `BaseIntegration`
-
-- Uses the **Laravel HTTP Client** with configurable `timeout` and
-  `connect_timeout`.
-- Reads all credentials from `config/integrations.php` (which reads `.env`) —
-  **`env()` is never called directly** in services or controllers.
-- Logs to the dedicated **`integrations`** channel (`storage/logs/integrations.log`).
-- **Redacts** passwords, tokens, API keys, and `Authorization` headers before
-  writing to logs.
-- Provides `handleFailure()` and `handleConnectionError()` for consistent
-  error handling.
-- **Automatic retries are disabled by default** (`INTEGRATION_RETRY_TIMES=0`).
-  Subclasses must explicitly enable retries only for **idempotent** operations.
-
-### Webhooks (future)
-
-When adding webhook endpoints:
-
-1. Verify the request signature using the provider's signing secret.
-2. Store processed event IDs in a database table to enforce
-   **idempotency** (reject duplicate events).
-3. Respond with `200` quickly and process the payload asynchronously via a
-   queued job.
-4. Log webhook events to the `integrations` channel with secrets redacted.
-
-No webhooks or real integrations are implemented in this phase.
-
----
-
-## 10. Multi-Tenancy (Future)
-
-VODNOX will serve multiple companies (tenants) with strict data isolation.
-This phase only prepares the architecture:
-
-- Web/API controller separation is **not** a substitute for tenant isolation.
-- Future tenant scoping will be applied at the query/model level (e.g., a
-  `tenant_id` column on business tables + a global scope).
-- Gates and Policies can be added later; no authorization package is installed.
-- Asterisk distribution across tenants/servers is intentionally left
-  undecided.
-
----
-
-## 11. Production Checklist
-
-- Set `APP_ENV=production` and `APP_DEBUG=false`.
-- Serve over **HTTPS**; set `SESSION_SECURE_COOKIE=true` and
-  `SESSION_SAME_SITE=lax`.
-- Set `CORS_ALLOWED_ORIGINS` to the production frontend domains.
-- Run `php artisan config:cache`, `route:cache`, `view:cache`.
-- Keep `.env` out of Git (already in `.gitignore`).
-- Run the queue worker with a process supervisor (e.g., Supervisor).
-- Set the scheduler cron entry.
-
-### Timezone
-
-- Application timezone: `Asia/Baghdad` (set in `config/app.php`).
-- For call-event timestamps (future), store in **UTC** and convert to
-  `Asia/Baghdad` at the presentation layer.
-
----
-
-## 12. Bootstrap 5 Frontend Assets
-
-Assets are built with Vite during development. The compiled files are shipped
-to `public/build/` so production does **not** need Node.js or npm.
-
-```bash
-# Development (hot reload)
-npm run dev
-
-# Production build
-npm run build
-```
-
-Outputs:
-
-- `public/build/assets/app-ltr-*.css` — Bootstrap 5 LTR
-- `public/build/assets/app-rtl-*.css` — Bootstrap 5 RTL
-- `public/build/assets/app-*.js` — Bootstrap JS + axios
-
-Only Bootstrap 5 and axios (HTTP client) are included. No other UI libraries.
-
----
-
-## 13. What Was Implemented
-
-- Laravel 12 on PHP 8.2 with MySQL (utf8mb4).
-- Laravel UI session authentication (login/logout, JSON, no views).
-- Login rate limiting (5/min), session regeneration, CSRF rotation on logout.
-- Web/API controller separation; `/api/v1` prefix.
-- Unified JSON response envelope; proper HTTP status codes; JSON-only API
-  error handling (404, 405, 422, 429, 401, 403).
-- Arabic (default) + English localization with RTL/LTR Bootstrap 5.
-- `SetLocale` middleware (session for web, `Accept-Language` for API).
-- Health endpoint at `/api/v1/health`.
-- CORS with restricted origins, no credentials.
-- Database queue driver + scheduler scaffold.
-- `BaseIntegration` with HTTP client, secret redaction, dedicated log channel.
-- `BaseService` for future business logic.
-- 19 passing tests (auth, API errors, localization, health).
-- `.env.example` with all variables (no secrets).
-
-## 14. What Is Deferred
-
-- Login/register/dashboard UI pages and Blade layouts.
-- Business modules (tenants, users, calls, extensions, billing, reports).
-- Token-based auth for Flutter (Sanctum/Passport).
-- Password reset and email verification flows.
-- Actual Asterisk/PJSIP integration and SIP/WebRTC.
-- Real external integrations and webhooks.
-- Authorization (Gates/Policies) and multi-tenancy data scoping.
-- Redis (not required; database queue driver is used).
-
----
-
-## 15. Verification Commands & Results
-
-```bash
-$ php artisan about
-Application Name: VODNOX
-Laravel Version:  12.x
-PHP Version:      8.2.x
-Timezone:         Asia/Baghdad
-Locale:           ar
-Database:         mysql
-Queue:            database
-Session:          database
-
 $ php artisan test
-Tests:  19 passed (64 assertions)
+Tests:  95 passed (217 assertions)
 
-$ curl http://127.0.0.1:8000/api/v1/health
-{"success":true,"message":"الخدمة تعمل.","data":{"status":"ok"},"errors":null}
+$ php artisan route:list --except-vendor | tail -1
+Showing [143] routes
 
-$ curl -H "Accept-Language: en" http://127.0.0.1:8000/api/v1/health
-{"success":true,"message":"Service is running.","data":{"status":"ok"},"errors":null}
+$ php artisan view:cache
+Blade templates cached successfully.
 ```
 
-.
+- المنطقة الزمنية: `Asia/Baghdad`، اللغة: `ar`، الاتصال: `mysql`، الجلسات والطوابير: `database`.
+- `TELEPHONY_WEBHOOK_SECRET` فارغ ⇒ أي Webhook وارد يُرفض بـ `503` مع JSON
+  (لا HTML ولا redirect) حتى توفّر بيانات الربط.

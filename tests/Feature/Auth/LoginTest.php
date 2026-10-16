@@ -13,12 +13,12 @@ class LoginTest extends TestCase
     public function test_login_with_valid_credentials_returns_json_success(): void
     {
         $user = User::factory()->create([
-            'email' => 'admin@vodnox.test',
+            'username' => 'admin',
             'password' => 'password123',
         ]);
 
         $response = $this->postJson('/login', [
-            'email' => 'admin@vodnox.test',
+            'username' => 'admin',
             'password' => 'password123',
         ]);
 
@@ -26,8 +26,7 @@ class LoginTest extends TestCase
             ->assertJsonStructure([
                 'success',
                 'message',
-                'data' => ['user' => ['id', 'name', 'email']],
-                'errors',
+                'data' => ['user' => ['id', 'name', 'username']],
             ])
             ->assertJson(['success' => true]);
 
@@ -37,12 +36,12 @@ class LoginTest extends TestCase
     public function test_login_with_invalid_credentials_returns_422(): void
     {
         User::factory()->create([
-            'email' => 'admin@vodnox.test',
+            'username' => 'admin',
             'password' => 'password123',
         ]);
 
         $response = $this->postJson('/login', [
-            'email' => 'admin@vodnox.test',
+            'username' => 'admin',
             'password' => 'wrong-password',
         ]);
 
@@ -58,7 +57,7 @@ class LoginTest extends TestCase
         $response = $this->postJson('/login', []);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['email', 'password']);
+            ->assertJsonValidationErrors(['username', 'password']);
     }
 
     public function test_logout_invalidates_session(): void
@@ -79,28 +78,29 @@ class LoginTest extends TestCase
             ->assertStatus(401);
     }
 
-    public function test_login_form_returns_404(): void
+    public function test_login_form_returns_view(): void
     {
-        $this->getJson('/login')
-            ->assertStatus(404);
+        $this->get('/login')
+            ->assertStatus(200)
+            ->assertViewIs('auth.login');
     }
 
     public function test_too_many_login_attempts_returns_429(): void
     {
         User::factory()->create([
-            'email' => 'admin@vodnox.test',
+            'username' => 'admin',
             'password' => 'password123',
         ]);
 
         for ($i = 0; $i < 5; $i++) {
             $this->postJson('/login', [
-                'email' => 'admin@vodnox.test',
+                'username' => 'admin',
                 'password' => 'wrong',
             ]);
         }
 
         $response = $this->postJson('/login', [
-            'email' => 'admin@vodnox.test',
+            'username' => 'admin',
             'password' => 'wrong',
         ]);
 

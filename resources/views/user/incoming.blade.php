@@ -1,0 +1,27 @@
+@extends('layouts.user')
+
+@section('title', __('portal.agent.incoming_title'))
+@section('crumb', __('portal.agent.incoming_title'))
+
+@push('styles')
+<link rel="stylesheet" href="{{ asset('assets/vodnox/incoming.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vodnox/reception.css') }}">
+@endpush
+
+@section('content')
+@include('user._workspace')
+
+<div class="page-head">
+    <div>
+        <h1>{{ __('portal.agent.incoming_title') }}</h1>
+        <p>{{ __('portal.agent.incoming_sub') }}</p>
+    </div>
+    <span class="agent-status"><i></i><span>{{ __('portal.agent.not_connected') }}</span></span>
+</div>
+
+@include('user._call_workspace', ['storeRoute' => route('user.incoming.store')])
+@endsection
+
+@push('scripts')
+<script src="{{ asset('assets/vodnox/incoming.js') }}"></script>
+@endpush

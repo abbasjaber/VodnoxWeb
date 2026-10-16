@@ -1,0 +1,102 @@
+/* Shared palette for the approved login and all three workspaces. */
+.theme-toggle{height:34px;width:34px;display:grid;place-items:center;flex-shrink:0;border:1px solid #dfe6ef;border-radius:9px;background:transparent;color:#7c8da5;padding:0;transition:background .15s,border-color .15s}.theme-toggle svg{width:17px;height:17px}.theme-toggle:hover{background:#edf2f8;border-color:#cbb68d}.theme-toggle:focus-visible{outline:3px solid #d9a956;outline-offset:3px}.login-tools{display:flex;align-items:center;gap:12px}.login-tools .language{white-space:nowrap}
+html[data-theme=dark]{--text:#e8eef8;--muted:#a8b7cc;--border:#293950;--cloud:#1c2d45;--green:#77cfb0;--red:#e6a1a8;--blue:#a8c5ec;--surface:#132238;--surface-raised:#1b2d46;--dark-bg:#0b1424;--navy:#101d35;--gold:#f7b955}
+html[data-theme=dark] body{background:var(--dark-bg);color:var(--text)}
+html[data-theme=dark] :is(.sidebar,.topbar,.form-panel){background:#101d35;border-color:var(--border)}
+html[data-theme=dark] :is(.card,.stat,.plan-card,.service,.account-header,.quick-action,.main-note,.dialer-card,.mini-stat,.contact-card,.personal-note,dialog){background:var(--surface);border-color:var(--border);color:var(--text)}
+html[data-theme=dark] :is(.brand img,.logo){background:transparent;padding:0;border-radius:0;filter:url(#vodnox-dark-logo)}
+
+
+html[data-theme=dark] :is(h1,h2,h3,.company-cell strong,.profile b,.stat strong,.price,.mini-metric strong,.breakdown-row strong,.detail-line dd,.mini-stat strong,.call-type span strong,.contact-card h2,.favorite strong,.tenant-selector strong){color:#e8eef8}
+html[data-theme=dark] :is(.subtitle,.nav-label,.nav-item,.breadcrumb,.breadcrumb b,.language,.profile small,.side-bottom,.environment,.logout,.stat-top,.stat small,.card-head p,.card-head a,.text-btn,.page-head p,.breakdown-row,.breakdown-row small,.help-note,.field-help,.detail-line dt,.form-field label,.form-field small,.toggle-line p,.plan-card p,.plan-card li,.plan-card li b,.service p,.table-foot,.account-meta,.tag,.timeline-item p,.timeline-item time,.alert-row p,footer,.settings-body>p,.secure,.panel-bottom,.panel-bottom b,.intro-tag,.input-icon,.eye,.price small,.mini-metric span,.recording-placeholder,.call-note,.hint-cell,.tenant-selector small,.flow-note,.retention-line,.queue-item p,.metric-inline small,.company-info-head p,.extension-chip,.user-identity p,.device-state strong,.device-state small,.availability-wrap,.desk-head p,.number-label,.dialer-note,.my-line,.my-line strong,.favorite small,.call-type small,.recent-time,.recent-time small,.mini-stat span,.mini-stat small,.personal-note p,.contact-card p,.call-status-label,.audio-status b,.audio-status small,.profile-top small,.history-count,.history-unknown,.call-status-label,.empty p){color:#a9b9cf}
+html[data-theme=dark] .text-btn:hover,html[data-theme=dark] .language:hover{color:var(--gold)}
+html[data-theme=dark] .nav-item:hover{background:#1b2d45;color:#edf3fc}
+html[data-theme=dark] .nav-item.active{background:#263951;color:#f5f7fc;box-shadow:none}
+html[data-theme=dark] .nav-item.active svg{color:var(--gold)}
+html[data-theme=dark] .nav-count{background:#ffffff0a;color:#c7d5e8}
+html[data-theme=dark] :is(.nav-divider,.top-divider){background:var(--border)}
+html[data-theme=dark] :is(.avatar,.company-avatar,.stat-icon,.alert-icon,.empty-icon,.service-icon,.mini-avatar,.tenant-avatar,.quick-action>span,.audit-item>span,.personal-note>span,.contact-avatar,.call-direction){background:#24364e;color:#d4e0f2;border-color:#34465f}
+html[data-theme=dark] :is(.tenant-avatar,.profile-card .company-avatar,.account-header .company-avatar,.company-info-head .company-avatar){background:#263951;color:var(--gold)}
+html[data-theme=dark] :is(.tenant-selector,.routing-top,.target,.mini-metric,.favorite,.extension-chip,.my-line,.dial-key,.audio-status,.filter-pill,.directory-badge,.top-extension){background:#192b43;border-color:#2b3d57;color:#b8c8df}
+html[data-theme=dark] .self-avatar{background:#263951;border-color:#1c2d45;color:var(--gold)}
+html[data-theme=dark] :is(.user-identity,.side-bottom .environment,.device-state,.visual-bottom,.account-header,.table-foot,.modal-head,.modal-foot,.detail-line,.toggle-line,.plan-card ul,.tabs,.queue-item,.alert-row,.audit-item,.dialer-top,.number-entry,.my-line,footer){border-color:var(--border)}
+html[data-theme=dark] :is(input,select,textarea,.filters input,.filters select,.form-field input,.form-field select,.form-field textarea,.contacts-filters input,.contacts-filters select,.history-filters input,.availability-wrap select){background:#0f1d31;color:#e5edf8;border-color:#30415b}
+html[data-theme=dark] input::placeholder,html[data-theme=dark] textarea::placeholder{color:#94a6c0}
+html[data-theme=dark] :is(input,select,textarea):focus{border-color:#d9ab60;box-shadow:0 0 0 3px #f7b95516}
+html[data-theme=dark] input:disabled{background:#17283e;color:#a0b0c8}
+html[data-theme=dark] :is(th){background:#192b43;color:#b1c1d8;border-color:#2a3b54}
+html[data-theme=dark] td{color:#b6c6dc;border-color:#24344b}
+html[data-theme=dark] tbody tr:hover{background:#192b43}
+html[data-theme=dark] :is(.btn-primary,.submit,.call-button){background:var(--gold);color:#101d35;box-shadow:none}
+html[data-theme=dark] :is(.btn-primary,.submit,.call-button) svg{color:#101d35}
+html[data-theme=dark] :is(.btn-primary,.submit,.call-button):hover{background:#ffca73;color:#101d35}
+html[data-theme=dark] :is(.btn-secondary,.row-link,.contact-call){background:#1d2f48;color:#d1dced;border-color:#334760}
+html[data-theme=dark] :is(.btn-secondary,.row-link,.contact-call):hover{background:#2a3d57;border-color:#b79a65;color:#ffe0a4}
+html[data-theme=dark] :is(.btn-quiet,.icon-btn){color:#b5c4db}
+html[data-theme=dark] :is(.icon-btn,.eye):hover{background:#21344e;color:var(--gold)}
+html[data-theme=dark] .btn-danger{background:#3a2536;border-color:#694151;color:#f2b3ba}
+html[data-theme=dark] .section-note,html[data-theme=dark] .toast{background:#302a21;border-color:#594a33;color:#e1c79b}
+html[data-theme=dark] :is(.demo-banner,.simulation-note){color:#ceb68c}
+html[data-theme=dark] .demo-tag{color:#92a5c2}
+html[data-theme=dark] :is(.tag,.notice-count){background:#20324a;border-color:#34455f;color:#b6c6df}
+html[data-theme=dark] .notice-count{background:#342b20;color:#e4bd80}
+html[data-theme=dark] .status{background:#26364d;color:#b9c8dd}
+html[data-theme=dark] :is(.status.active,.status.paid){background:#183b35;color:#91dfbf}
+html[data-theme=dark] .status.trial{background:#223954;color:#b7d0f4}
+html[data-theme=dark] :is(.status.pending,.status.unpaid){background:#3a2e21;color:#f0ce93}
+html[data-theme=dark] :is(.status.suspended,.status.expired,.status.overdue){background:#3e2837;color:#f1b2bd}
+html[data-theme=dark] .status.draft{background:#25354d;color:#bacbe3}
+html[data-theme=dark] .progress{background:#26384f}
+html[data-theme=dark] .progress span{background:#91a8c8}
+html[data-theme=dark] .progress.high span{background:var(--gold)}
+html[data-theme=dark] .welcome,html[data-theme=dark] .current-plan{background:#14243a;border:1px solid #31415a}
+html[data-theme=dark] .welcome small,html[data-theme=dark] .current-plan small{color:var(--gold)}
+html[data-theme=dark] .welcome :is(p,.welcome-end span),html[data-theme=dark] .current-plan :is(p,dt,dd){color:#b5c4d9}
+html[data-theme=dark] .current-plan .btn-secondary{background:#253a54;border-color:#3c506c;color:#e4edf9}
+html[data-theme=dark] .digit{background:#3b3022;color:#f0c984;border-color:#6c5331}
+html[data-theme=dark] .routing-branches{border-color:#34465f}
+html[data-theme=dark] .checkbox-list label{border-color:#31445f;color:#d0ddef}
+html[data-theme=dark] .checkbox-list label:has(input:checked){background:#342d24;border-color:#886c3f;color:#f0d4a7}
+html[data-theme=dark] .switch{background:#3b4d66}
+html[data-theme=dark] .switch[aria-checked=true]{background:var(--gold)}
+html[data-theme=dark] .switch:before{background:#edf3fb}
+html[data-theme=dark] .switch[aria-checked=true]:before{background:#101d35}
+html[data-theme=dark] :is(.chart text){fill:#a9bbd4}
+html[data-theme=dark] .chart path[stroke="#edf1f6"]{stroke:#2a3c55}
+html[data-theme=dark] .chart rect[fill="#101D35"]{fill:#829bbf}
+html[data-theme=dark] .legend{color:#b5c5dc}
+html[data-theme=dark] .legend .navy{background:#829bbf}
+html[data-theme=dark] .app-toast{background:#243a56;color:#f0f5fd;border-color:#425778}
+html[data-theme=dark] .theme-toggle{background:#1b2e46;border-color:#33465f;color:var(--gold)}
+html[data-theme=dark] .theme-toggle:hover{background:#2b3e57;border-color:#ab8c57}
+html[data-theme=dark] .language{border-color:#31435d}
+html[data-theme=dark] .language:hover{background:#20334d}
+html[data-theme=dark] .mobile-nav{background:#101d35;border-color:#2c3d55}
+html[data-theme=dark] .mobile-nav button{color:#adbed7}
+html[data-theme=dark] .mobile-nav button.active{color:#f7b955}
+html[data-theme=dark] .incoming-demo{background:#332c22;color:#e3c99e;border-color:#655132}
+html[data-theme=dark] .number-entry input{background:transparent;color:#edf3fd;border:0}
+html[data-theme=dark] .number-entry input::placeholder{color:#93a8c5}
+html[data-theme=dark] .number-entry button{color:#b1c4df}
+html[data-theme=dark] .number-entry button:hover{background:#253a55}
+html[data-theme=dark] .dial-key b{color:#dce7f7}
+html[data-theme=dark] .dial-key span{color:#a0b2cc}
+html[data-theme=dark] .dial-key:hover{background:#342f26;border-color:#9c7d47}
+html[data-theme=dark] .favorite:hover{background:#322e27;border-color:#b79a64}
+html[data-theme=dark] .favorite:nth-child(2) .contact-avatar{background:#3b3124;color:#edca91}
+html[data-theme=dark] .filter-pill.active{background:#f7b955;color:#101d35;border-color:#f7b955}
+html[data-theme=dark] .star{color:#a5b6ce}
+html[data-theme=dark] .star.selected{color:#f7b955}
+html[data-theme=dark] .missed .call-direction{background:#3e2837;color:#e7a3ac}
+html[data-theme=dark] .call-type.missed svg{color:#e7a3ac}
+html[data-theme=dark] .call-window{background:#101d35;border-color:#3a4c67;color:#edf3fd}
+html[data-theme=dark] .call-window h2{color:#f0f5fc}
+html[data-theme=dark] .call-window .dial-key{background:#ffffff08;border-color:#ffffff15}
+html[data-theme=dark] .call-window .call-control.selected>span{background:var(--gold);color:#101d35}
+html[data-theme=dark] .call-window .call-clock{color:var(--gold)}
+html[data-theme=dark] dialog::backdrop{background:#040a16b0}
+html[data-theme=dark] .notification-dot{border-color:#101d35}
+html[data-theme=dark] .form-panel h1{color:#edf3fc}
+@media(max-width:760px){.login-tools{gap:8px}.theme-toggle{width:31px;height:31px}.login-tools .language{padding-inline:10px;font-size:10px}}
+@media(max-width:700px){.top-actions{gap:9px}}
+@media(max-width:480px){.panel-top{gap:10px}.panel-top .logo{width:120px}.login-tools .language{font-size:9px}.login-tools{gap:7px}}

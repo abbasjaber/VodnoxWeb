@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\TelephonyWebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -22,6 +23,14 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('throttle:api')->group(function () {
     Route::get('/health', HealthController::class)->name('api.health');
 });
+
+/*
+ * Telephony webhook. Public but authenticated by an HMAC-SHA256 signature;
+ * idempotent by event_id. Kept outside the api throttle group so provider
+ * retries are never silently dropped.
+ */
+Route::post('/telephony/webhook', TelephonyWebhookController::class)
+    ->name('api.telephony.webhook');
 
 /*
  * Authenticated API routes will live in this group once token-based auth

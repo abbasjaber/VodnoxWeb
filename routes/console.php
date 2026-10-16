@@ -13,9 +13,9 @@ Artisan::command('inspire', function () {
 | Scheduled Tasks
 |--------------------------------------------------------------------------
 |
-| Business scheduled jobs (billing runs, report generation, call-log
-| reconciliation, etc.) will be registered here in later phases. The
-| scheduler is intentionally empty in this foundational phase.
+| No recurring business tasks are required by the current scope, so the
+| scheduler is registered but empty. Add future recurring jobs (billing
+| runs, report generation, call-log reconciliation, etc.) here.
 |
 | Run the scheduler in production with:
 |   * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1

@@ -14,5 +14,10 @@ return [
     'too_many_requests' => 'طلبات كثيرة جداً. يرجى إبطاء السرعة.',
     'error' => 'حدث خطأ أثناء معالجة طلبك.',
     'validation_failed' => 'البيانات المقدمة غير صالحة.',
+    'webhook_not_configured' => 'بوابة الاتصالات غير مهيأة بعد.',
+    'webhook_invalid_signature' => 'توقيع الطلب غير صالح.',
+    'webhook_invalid_payload' => 'حمولة الحدث غير صالحة.',
+    'webhook_received' => 'تم استلام الحدث.',
+    'webhook_duplicate' => 'حدث مكرر؛ تم تجاهله.',
 
 ];
