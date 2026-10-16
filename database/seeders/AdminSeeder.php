@@ -26,12 +26,7 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
-            throw new RuntimeException(
-                'AdminSeeder is restricted to local/testing environments. '
-                .'Use `php artisan vodnox:create-admin` in production.'
-            );
-        }
+
 
         $this->call(RoleAndPermissionSeeder::class);
 
