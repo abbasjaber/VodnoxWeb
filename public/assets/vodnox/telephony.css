@@ -1,7 +1,8 @@
 /*
  * Browser phone (SIP.js) — used inside the shared call workspace on the
- * incoming-call and reception screens. Colours are declared locally so the
- * panel stays readable even on pages that do not define the workspace tokens.
+ * dialer, incoming-call and reception screens. Colours are declared locally so
+ * the panel stays readable even on pages that do not define the workspace
+ * tokens.
  */
 .phone-card{
   --rx-bg:#f5f7fa;--rx-card:#fff;--rx-ink:#172842;--rx-muted:#687b94;--rx-line:#e4eaf2;--rx-soft:#f7f9fc;--rx-green:#267b61;--rx-red:#b74755;--rx-gold:#f7b955;
@@ -55,3 +56,14 @@ html[data-theme=dark] .phone-timer{color:#f0ce93}
   .phone-incoming{align-items:stretch}
   .phone-incoming .phone-row{width:100%}
 }
+
+/*
+ * Sidebar / dialer mirrors of the phone state. The wording always comes from
+ * telephony.js (real SIP events); only the tint is styled here.
+ */
+.device-state[data-state=registered] #deviceIcon{color:#267b61}
+.device-state[data-state=connecting] #deviceIcon{color:#916628}
+.device-state[data-state=failed] #deviceIcon{color:#b74755}
+html[data-theme=dark] .device-state[data-state=registered] #deviceIcon{color:#91dfbf}
+html[data-theme=dark] .device-state[data-state=connecting] #deviceIcon{color:#e6c078}
+html[data-theme=dark] .device-state[data-state=failed] #deviceIcon{color:#e79aa6}

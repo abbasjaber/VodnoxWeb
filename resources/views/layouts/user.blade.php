@@ -28,7 +28,18 @@
     </div>
     @include('partials.user-nav')
     <div class="side-bottom">
-        <div class="device-state"><span id="deviceIcon"></span><div><strong>@lang('vodnox.unconnected')</strong><small>@lang('vodnox.sip_unverified')</small></div></div>
+        <div class="device-state" id="deviceState" data-state="unconnected"
+             data-unconnected="@lang('vodnox.unconnected')"
+             data-connecting="@lang('portal.agent.telephony_connecting')"
+             data-registered="@lang('portal.agent.telephony_registered')"
+             data-failed="@lang('portal.agent.telephony_failed')"
+             data-unverified="@lang('vodnox.sip_unverified')">
+            <span id="deviceIcon"></span>
+            <div>
+                <strong id="deviceStateText">@lang('vodnox.unconnected')</strong>
+                <small id="deviceStateHint">@lang('vodnox.sip_unverified')</small>
+            </div>
+        </div>
         <form method="POST" action="{{ route('logout') }}">@csrf<button class="logout" type="submit">@lang('vodnox.logout')</button></form>
     </div>
 </aside>
@@ -62,8 +73,6 @@
 @include('partials.modal')
 <div id="toast" class="app-toast" role="status" aria-live="polite"></div>
 
-<script src="{{ asset('assets/vodnox/user-icons.js') }}"></script>
-<script src="{{ asset('assets/vodnox/user.js') }}"></script>
 @stack('scripts')
 </body>
 </html>

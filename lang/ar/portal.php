@@ -405,7 +405,7 @@ return [
         'validation_failed' => 'تحقق من الحقول المطلوبة.',
 
         'telephony_title' => 'هاتف المتصفح',
-        'telephony_sub' => 'حساب اتصال خاص بك داخل مؤسستك. فعّل الهاتف مرة واحدة في هذا الجهاز.',
+        'telephony_sub' => 'حساب اتصال خاص بك داخل مؤسستك. يتصل الهاتف تلقائياً؛ استخدم الزر لإعادة الاتصال أو لنقل الخط من تبويب آخر.',
         'telephony_activate' => 'تفعيل الهاتف',
         'telephony_dial_placeholder' => 'رقم التحويلة الداخلية',
         'telephony_call' => 'اتصال',
@@ -439,5 +439,12 @@ return [
         'telephony_org_inactive' => 'المؤسسة غير مفعّلة حالياً.',
         'telephony_no_colleagues' => 'لا يوجد زملاء متاحون للاتصال.',
         'telephony_leave_warning' => 'توجد مكالمة جارية؛ مغادرة الصفحة ستنهيها.',
+        'telephony_mic_denied' => 'الوصول إلى الميكروفون مطلوب لإجراء المكالمات أو الرد عليها. اسمح به في المتصفح ثم أعد المحاولة.',
+        'telephony_no_mic' => 'لم يُعثر على ميكروفون في هذا الجهاز.',
+        'telephony_unknown_caller' => 'رقم غير معروف',
+        'telephony_peer_busy' => 'الطرف الآخر مشغول.',
+        'telephony_peer_rejected' => 'تم رفض المكالمة.',
+        'telephony_no_answer' => 'لا يوجد رد.',
+        'telephony_network_lost' => 'انقطع الاتصال بخادم الاتصالات. جارٍ إعادة الاتصال…',
     ],
 ];

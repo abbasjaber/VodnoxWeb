@@ -17,6 +17,7 @@
 
 @section('content')
 @include('user._workspace')
+@include('user._phone_card')
 
 <div class="desk-head">
     <div>
@@ -37,7 +38,15 @@
     <section class="dialer-card">
         <div class="dialer-top">
             <h2>{{ __('portal.agent.new_call') }}</h2>
-            <span class="status draft">{{ __('portal.agent.not_connected') }}</span>
+            <span class="status draft" id="dialerStatus" data-phone-state
+                  data-label-unconnected="{{ __('portal.agent.not_connected') }}"
+                  data-label-connecting="{{ __('portal.agent.telephony_connecting') }}"
+                  data-label-registered="{{ __('portal.agent.telephony_registered') }}"
+                  data-label-failed="{{ __('portal.agent.telephony_failed') }}"
+                  data-tone-unconnected="draft"
+                  data-tone-connecting="pending"
+                  data-tone-registered="active"
+                  data-tone-failed="expired">{{ __('portal.agent.not_connected') }}</span>
         </div>
         <div class="dialer-body">
             <div class="number-label">{{ __('portal.agent.enter_number') }}</div>
@@ -57,13 +66,13 @@
                     data-extension="{{ auth()->user()->extension }}"
                     data-invalid="{{ __('portal.agent.invalid_number') }}"
                     data-own="{{ __('portal.agent.own_extension') }}"
-                    data-blocked="{{ __('portal.agent.call_blocked_text') }}">
+                    data-unavailable="{{ __('portal.agent.telephony_unavailable') }}"
+                    data-notready="{{ __('portal.agent.telephony_not_registered') }}">
                 {{ __('portal.agent.call') }}
             </button>
             <p id="dialNotice" class="help-note" hidden></p>
             <p class="dialer-note">
                 {{ __('portal.agent.your_extension') }}: <span class="number">{{ auth()->user()->extension ?? '-' }}</span>
-                &middot; {{ __('portal.agent.registration_unverified') }}
             </p>
         </div>
         <div class="my-line">
@@ -98,17 +107,14 @@
             <div class="mini-stat">
                 <span>{{ __('portal.agent.my_calls_today') }}</span>
                 <strong>{{ $stats['calls_today'] }}</strong>
-                <small>{{ __('portal.agent.simulation') }}</small>
             </div>
             <div class="mini-stat">
                 <span>{{ __('portal.agent.missed_incoming') }}</span>
                 <strong>{{ $stats['missed_incoming'] }}</strong>
-                <small>{{ __('portal.agent.simulation') }}</small>
             </div>
             <div class="mini-stat">
                 <span>{{ __('portal.agent.talk_time') }}</span>
                 <strong>{{ $clock($stats['talk_time']) }}</strong>
-                <small>{{ __('portal.agent.simulation') }}</small>
             </div>
         </div>
 
@@ -198,7 +204,8 @@
         });
     }
 
-    /* There is no telephony integration: the dialer never fakes a connection. */
+    /* The dialer delegates to the real browser phone (telephony.js) instead of
+       faking a connection: the call starts only from its SIP events. */
     callButton.addEventListener('click', function () {
         var number = (input.value || '').replace(/\s+/g, '');
         if (!/^\+?[0-9*#]{3,15}$/.test(number)) {
@@ -209,7 +216,22 @@
             tell(callButton.getAttribute('data-own'));
             return;
         }
-        tell(callButton.getAttribute('data-blocked'));
+        if (!window.vodnoxPhone) {
+            tell(callButton.getAttribute('data-unavailable'));
+            return;
+        }
+        if (!window.vodnoxPhone.isRegistered()) {
+            tell(callButton.getAttribute('data-notready'));
+            return;
+        }
+        tell('');
+        window.vodnoxPhone.placeCall(number);
+    });
+
+    /* Surface the phone's own messages (mic denied, busy, ended…) next to the
+       dialer as well, so the agent never has to look for them. */
+    window.addEventListener('vodnox:phone-message', function (event) {
+        tell(event.detail && event.detail.text ? event.detail.text : '');
     });
 })();
 </script>

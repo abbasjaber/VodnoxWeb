@@ -1,21 +1,15 @@
 {{--
     Shared agent-workspace bootstrap.
 
-    The calling prototype (assets/vodnox/user.js) aborts on the missing #language
-    hook before it reaches its render step, which keeps this server-rendered
-    markup authoritative (the same pattern the organization workspace relies on).
+    The server-rendered markup is authoritative; the browser phone lives in
+    user/_phone_card.blade.php and owns every telephony interaction from real
+    SIP events (registration, ringing, answered, ended).
 
-    This partial provides the demo banner, the flash/validation feedback and the
-    bindings the prototype never reaches: sidebar toggle, modal-form reset,
-    destructive-action confirmation and the explicit microphone / notification
-    permission buttons (never requested automatically).
+    This partial provides the flash/validation feedback and the bindings the
+    hand-written pages rely on: sidebar toggle, destructive-action confirmation
+    and the explicit microphone / notification permission buttons (never
+    requested automatically).
 --}}
-<div class="demo-banner">
-    <span aria-hidden="true">&#9432;</span>
-    <span>{{ __('portal.agent.demo_banner') }}</span>
-    <span class="demo-tag">{{ __('portal.agent.demo_tag') }}</span>
-</div>
-
 @if (session('success'))
     <span data-agent-flash="{{ session('success') }}" hidden></span>
 @endif
@@ -37,13 +31,6 @@
 <script>
 (function () {
     'use strict';
-
-    /* The prototype binds a submit handler to the shared #modalForm before it
-       aborts; rebuild the node so Laravel-driven forms post normally. */
-    var form = document.getElementById('modalForm');
-    if (form && form.parentNode) {
-        form.parentNode.replaceChild(form.cloneNode(true), form);
-    }
 
     var menuBtn = document.getElementById('menuBtn');
     var sidebar = document.getElementById('sidebar');

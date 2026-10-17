@@ -63,7 +63,10 @@ class HttpTelephonyGateway implements TelephonyGateway
     public function testConnection(): array
     {
         try {
-            $response = $this->client()->get('/health');
+            // The agent authenticates every route, including this read-only
+            // probe, so the health check is signed over an empty body just like
+            // the mutation calls. An unsigned GET is rejected by the agent.
+            $response = $this->signed('')->get('/health');
 
             return [
                 'ok' => $response->successful(),

@@ -405,7 +405,7 @@ return [
         'validation_failed' => 'Check the required fields.',
 
         'telephony_title' => 'Browser phone',
-        'telephony_sub' => 'Your own connection account inside your organization. Activate the phone once on this device.',
+        'telephony_sub' => 'Your own connection account inside your organization. The phone connects automatically; use the button to reconnect or to move the line from another tab.',
         'telephony_activate' => 'Activate phone',
         'telephony_dial_placeholder' => 'Internal extension number',
         'telephony_call' => 'Call',
@@ -439,5 +439,12 @@ return [
         'telephony_org_inactive' => 'The organization is currently inactive.',
         'telephony_no_colleagues' => 'No colleagues available to call.',
         'telephony_leave_warning' => 'A call is in progress; leaving this page will end it.',
+        'telephony_mic_denied' => 'Microphone access is required to make or answer calls. Allow it in the browser and try again.',
+        'telephony_no_mic' => 'No microphone was found on this device.',
+        'telephony_unknown_caller' => 'Unknown number',
+        'telephony_peer_busy' => 'The other side is busy.',
+        'telephony_peer_rejected' => 'The call was rejected.',
+        'telephony_no_answer' => 'No answer.',
+        'telephony_network_lost' => 'Connection to the telephony server was lost. Reconnecting…',
     ],
 ];

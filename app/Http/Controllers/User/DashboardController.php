@@ -15,9 +15,10 @@ class DashboardController extends Controller
     use ResolvesTenant;
 
     /**
-     * In-app dialer. There is intentionally no telephony integration: the view
-     * shows an explicit "not connected / simulation" state and never fakes a
-     * real connection.
+     * In-app dialer. The telephony UI is owned by user/_phone_card.blade.php,
+     * which talks to the real SIP stack through the authenticated
+     * user.telephony.credentials endpoint and only ever reports the states the
+     * SIP layer actually emits.
      */
     public function index(Request $request)
     {

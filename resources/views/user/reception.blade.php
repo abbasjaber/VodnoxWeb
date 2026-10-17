@@ -15,7 +15,11 @@
         <h1>{{ __('portal.agent.reception_title') }}</h1>
         <p>{{ __('portal.agent.reception_sub') }}</p>
     </div>
-    <span class="rx-pill">{{ __('portal.agent.not_connected') }}</span>
+    <span class="rx-pill" data-phone-state
+          data-label-unconnected="{{ __('portal.agent.not_connected') }}"
+          data-label-connecting="{{ __('portal.agent.telephony_connecting') }}"
+          data-label-registered="{{ __('portal.agent.telephony_registered') }}"
+          data-label-failed="{{ __('portal.agent.telephony_failed') }}">{{ __('portal.agent.not_connected') }}</span>
 </div>
 
 @include('user._call_workspace', ['storeRoute' => route('user.reception.store')])

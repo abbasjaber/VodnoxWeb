@@ -40,6 +40,11 @@ jobs:
       - name: Build assets with Vite
         run: npm run build
 
+      # Bundle SIP.js into public/assets/vodnox/vendor/sip.min.js (IIFE that
+      # exposes window.SIP). Built here because the cPanel host has no npm.
+      - name: Build browser telephony bundle
+        run: npm run build:telephony
+
       # ✅ Step 6: Deploy to cPanel via FTP 
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
