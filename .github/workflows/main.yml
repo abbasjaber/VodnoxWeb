@@ -52,11 +52,16 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
+          # NOTE: the Composer exclusion below must stay anchored to the
+          # repository root. A depth-agnostic vendor glob ("**" + "/vendor/**")
+          # also matched public/assets/vodnox/vendor/ and silently stripped the
+          # SIP.js bundle from every deploy, which left the browser phone dead
+          # with "SIP is not defined". Do not widen this pattern.
           exclude: |
             **/.git*
             **/.github/**
             **/node_modules/**
-            **/vendor/**
+            vendor/**
             **/tests/**
             .env
             .env.*

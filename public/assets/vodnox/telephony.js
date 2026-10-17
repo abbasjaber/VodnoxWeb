@@ -19,7 +19,7 @@
     'use strict';
 
     var root = document.getElementById('vodnoxPhone');
-    if (!root || !window.SIP) {
+    if (!root) {
         return;
     }
 
@@ -84,6 +84,17 @@
         message: document.getElementById('phoneMessage'),
         audio: document.getElementById('phoneRemoteAudio')
     };
+
+    // A missing SIP.js is a deploy problem, not a registration problem. Say so
+    // instead of leaving the employee with a call button that does nothing.
+    if (!SIP) {
+        console.error('VODNOX telephony: SIP.js is not loaded (expected assets/vodnox/vendor/sip.min.js).');
+        if (ui.pill) { ui.pill.dataset.state = 'failed'; }
+        if (ui.message) { ui.message.textContent = strings.sipMissing || ''; }
+        if (ui.activate) { ui.activate.disabled = true; }
+        if (ui.call) { ui.call.disabled = true; }
+        return;
+    }
 
     // Sidebar / dialer mirrors of the phone state. They are driven by the same
     // events as the card, so "registered" is only ever shown after the

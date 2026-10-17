@@ -81,4 +81,35 @@ class UserDialerPageTest extends TestCase
             $response->assertDontSee('assets/vodnox/user.js', false);
         }
     }
+
+    public function test_every_asset_the_phone_card_needs_is_actually_present(): void
+    {
+        foreach ([
+            'assets/vodnox/vendor/sip.min.js',
+            'assets/vodnox/telephony.js',
+            'assets/vodnox/telephony.css',
+        ] as $asset) {
+            $this->assertFileExists(public_path($asset), $asset);
+        }
+
+        // SIP.js is bundled as an IIFE that publishes a global; telephony.js
+        // relies on window.SIP and would refuse to register otherwise.
+        $this->assertStringContainsString(
+            'window.SIP',
+            file_get_contents(public_path('assets/vodnox/vendor/sip.min.js')),
+        );
+    }
+
+    /**
+     * The FTP deploy used to exclude "**&#47;vendor&#47;**", which also swallowed
+     * public/assets/vodnox/vendor/ and stripped sip.min.js from every release.
+     * The browser phone then died with "SIP is not defined".
+     */
+    public function test_the_deploy_excludes_only_the_root_composer_vendor_directory(): void
+    {
+        $workflow = file_get_contents(base_path('.github/workflows/main.yml'));
+
+        $this->assertStringNotContainsString('**/vendor/**', $workflow);
+        $this->assertStringContainsString("\n            vendor/**", $workflow);
+    }
 }

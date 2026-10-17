@@ -44,6 +44,7 @@
         'peerRejected' => __('portal.agent.telephony_peer_rejected'),
         'noAnswer' => __('portal.agent.telephony_no_answer'),
         'networkLost' => __('portal.agent.telephony_network_lost'),
+        'sipMissing' => __('portal.agent.telephony_sip_missing'),
     ];
 @endphp
 

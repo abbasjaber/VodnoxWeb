@@ -446,5 +446,6 @@ return [
         'telephony_peer_rejected' => 'The call was rejected.',
         'telephony_no_answer' => 'No answer.',
         'telephony_network_lost' => 'Connection to the telephony server was lost. Reconnecting…',
+        'telephony_sip_missing' => 'The browser phone library could not be loaded. Reload the page; if it keeps failing, contact support.',
     ],
 ];
