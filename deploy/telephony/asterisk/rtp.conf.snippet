@@ -1,0 +1,47 @@
+; ---------------------------------------------------------------------------
+; VODNOX — ICE host candidates for the browser phone behind NAT.
+; ---------------------------------------------------------------------------
+; Append the [ice_host_candidates] section below to /etc/asterisk/rtp.conf.
+; Keep whatever [general] block the host already has (rtpstart / rtpend) —
+; this snippet never changes the RTP port range.
+;
+; WHY THIS EXISTS
+;   When the Asterisk host sits behind NAT it advertises only its PRIVATE
+;   address inside SDP. The browser cannot reach that address, so the call
+;   connects and there is NO AUDIO in either direction. The section below tells
+;   Asterisk to announce the PUBLIC address instead. This is Asterisk's own,
+;   dependency-free mechanism: it needs no STUN server and no extra service.
+;
+; THE VALUES ARE PER SERVER — never a shared default
+;   <private-ip>  =>  <public-ip>
+;     * private-ip : one of the host's own interface addresses (behind the NAT)
+;                    read it with:  ip -4 addr show scope global
+;     * public-ip  : the address the internet sees for that same host
+;                    read it with:  curl -sS https://ifconfig.me/ip
+;   Do not copy the values from another server, and do not commit this server's
+;   values here — they belong in the operations guide (README, section 7).
+;
+; HOW TO APPLY IT
+;   Use the safe helper; it validates both addresses, keeps a timestamped
+;   backup, removes any previous section (so repeated runs cannot leave
+;   duplicates), writes the file atomically, and then reloads the RTP module
+;   only — Asterisk is never restarted:
+;
+;     sudo deploy/telephony/bin/ice-candidates.sh \
+;         --private <private-ip> --public <public-ip>
+;
+; VERIFY
+;   Place a call between two employees: the RTP counters must increase on both
+;   ends. If they stay at zero, the mapping does not match the host's real
+;   addresses.
+; ---------------------------------------------------------------------------
+
+[ice_host_candidates]
+; <private-ip> => <public-ip>
+; example (illustrative only — use this host's own addresses):
+;   10.0.0.5 => 203.0.113.7
+
+; --- the existing [general] block stays untouched, for example: -------------
+; [general]
+; rtpstart=10000
+; rtpend=20000

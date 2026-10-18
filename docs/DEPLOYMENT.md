@@ -64,27 +64,47 @@ chmod -R 775 storage bootstrap/cache
 ## 4. الطوابير (Queues)
 
 - المشغّل: `database`. جدول `jobs` يُنشأ بالترحيلات.
-- شغّل عاملاً تحت مشرف عمليات (Supervisor/systemd):
+- `ProvisionTelephonyJob` يحتاج عاملاً نشطاً لتزويد الاتصالات.
 
-```bash
-php artisan queue:work --tries=3 --timeout=90
+**هذا الإنتاج على استضافة cPanel مشتركة:** لا root ولا systemd ولا Supervisor،
+لذا يُدار العامل عبر **cPanel Cron** (سكربت جاهز في
+[`deploy/cpanel/queue-worker.sh`](../deploy/cpanel/queue-worker.sh) مع تفاصيل
+التركيب في [`deploy/cpanel/README.md`](../deploy/cpanel/README.md)).
+
+سطر Cron (كل دقيقة) — استبدل المسار بالمسار المطلق الفعلي:
+
+```cron
+* * * * * /bin/bash /home/ed7sm1twhe8d/public_html/vodnox.com/deploy/cpanel/queue-worker.sh >> /dev/null 2>&1
 ```
 
-مثال Supervisor:
+يشغّل السكربت دورة محدودة المدة (`--max-time=55`) خلف قفل `flock` يمنع تداخل
+العمال، بـ`--timeout=60` أقل من `retry_after=90`، وسجل خاص بـVODNOX
+(`storage/logs/vodnox-queue-worker.log`). **`queue:restart` لا يشغّل عاملاً** —
+هو فقط يطلب من العمال العاملين الخروج بعد مهمتهم الحالية.
+
+التحقق:
+
+```bash
+php artisan vodnox:queue-status          # الاتصال + المنتظرة + الفاشلة (بلا أسرار)
+cat storage/framework/vodnox-queue-worker.heartbeat
+```
+
+**على سيرفر VPS/root** (بديل، غير مستخدم في هذا الإنتاج): Supervisor/systemd
+مع أمر قريب من:
 
 ```ini
 [program:vodnox-worker]
-command=php /var/www/vodnox/artisan queue:work --tries=3 --timeout=90
+command=php /var/www/vodnox/artisan queue:work --tries=3 --timeout=60
 autostart=true
 autorestart=true
 numprocs=1
 user=www-data
 redirect_stderr=true
-stdout_logfile=/var/www/vodnox/storage/logs/worker.log
+stdout_logfile=/var/www/vodnox/storage/logs/vodnox-queue-worker.log
 stopwaitsecs=3600
 ```
 
-- `ProvisionTelephonyJob` يحتاج عاملاً نشطاً لتزويد الاتصالات.
+> يجب أن يبقى `--timeout` **أقل من** `retry_after` (90s) في الحالتين.
 
 ---
 

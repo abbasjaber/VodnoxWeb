@@ -442,6 +442,7 @@ return [
         'telephony_mic_denied' => 'الوصول إلى الميكروفون مطلوب لإجراء المكالمات أو الرد عليها. اسمح به في المتصفح ثم أعد المحاولة.',
         'telephony_no_mic' => 'لم يُعثر على ميكروفون في هذا الجهاز.',
         'telephony_unknown_caller' => 'رقم غير معروف',
+        'telephony_incoming_title' => 'مكالمة واردة',
         'telephony_peer_busy' => 'الطرف الآخر مشغول.',
         'telephony_peer_rejected' => 'تم رفض المكالمة.',
         'telephony_no_answer' => 'لا يوجد رد.',

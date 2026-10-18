@@ -112,4 +112,46 @@ class UserDialerPageTest extends TestCase
         $this->assertStringNotContainsString('**/vendor/**', $workflow);
         $this->assertStringContainsString("\n            vendor/**", $workflow);
     }
+
+    public function test_the_incoming_alert_is_marked_for_assistive_technology(): void
+    {
+        $response = $this->actingAs($this->agent)->get(route('user.index'))->assertOk();
+
+        $response->assertSee('id="phoneIncoming" role="alert"', false);
+        $response->assertSee('aria-live="assertive"', false);
+        $response->assertSee('id="phoneIncomingLabel"', false);
+    }
+
+    public function test_the_ring_tone_is_generated_locally_with_no_external_asset(): void
+    {
+        $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
+
+        $this->assertStringContainsString('AudioContext', $script);
+        $this->assertStringNotContainsString('new Audio(', $script);
+        $this->assertDoesNotMatchRegularExpression('~https?://[^"\')\s]+\.(mp3|wav|ogg)~i', $script);
+    }
+
+    public function test_the_deprecated_unload_listener_is_not_used(): void
+    {
+        $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
+
+        $this->assertStringNotContainsString("addEventListener('unload'", $script);
+        $this->assertStringContainsString("addEventListener('pagehide'", $script);
+    }
+
+    public function test_the_ring_stops_on_every_terminal_path(): void
+    {
+        $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
+
+        // answer, reject, hangup, session-established and end-session.
+        $this->assertGreaterThanOrEqual(4, substr_count($script, 'stopTone();'));
+    }
+
+    public function test_notifications_are_opt_in_with_an_in_page_fallback(): void
+    {
+        $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
+
+        $this->assertStringContainsString("permission !== 'granted'", $script);
+        $this->assertStringContainsString('requestNotificationPermission', $script);
+    }
 }

@@ -30,6 +30,7 @@ FILES=(
     .env.example
 
     bin/backup.sh
+    bin/ice-candidates.sh
     bin/install.sh
     bin/rollback.sh
 
@@ -37,6 +38,9 @@ FILES=(
     asterisk/http.conf.snippet
     asterisk/manager.conf.snippet
     asterisk/pjsip.conf
+    asterisk/rtp.conf.snippet
+
+    certbot/vodnox-telephony-deploy-hook.sh
 
     nginx/vodnox-allow.conf.example
     nginx/vodnox-provisioning.conf

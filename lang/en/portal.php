@@ -442,6 +442,7 @@ return [
         'telephony_mic_denied' => 'Microphone access is required to make or answer calls. Allow it in the browser and try again.',
         'telephony_no_mic' => 'No microphone was found on this device.',
         'telephony_unknown_caller' => 'Unknown number',
+        'telephony_incoming_title' => 'Incoming call',
         'telephony_peer_busy' => 'The other side is busy.',
         'telephony_peer_rejected' => 'The call was rejected.',
         'telephony_no_answer' => 'No answer.',

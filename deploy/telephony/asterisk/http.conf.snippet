@@ -23,4 +23,9 @@ tlsbindaddr=0.0.0.0:8089
 tlscertfile=/etc/asterisk/keys/pbx.vodnox.com.fullchain.pem
 tlsprivatekey=/etc/asterisk/keys/pbx.vodnox.com.key
 
-; Reload with:  asterisk -rx "http reload"
+; Reload with:  asterisk -rx "core reload"
+;   Asterisk 22 has no "http reload" CLI command. "core reload" re-reads
+;   http.conf (including tlscertfile/tlsprivatekey) without dropping calls.
+;   A bindaddr/bindport change is bound at module load: if the WSS listener does
+;   not appear afterwards, one restart is needed in a maintenance window
+;   (asterisk -rx 'core restart when convenient') — never during a call.

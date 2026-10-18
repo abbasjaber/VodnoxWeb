@@ -62,6 +62,9 @@
     var channel = 'BroadcastChannel' in window ? new BroadcastChannel('vodnox-phone') : null;
     var leaderKey = 'vodnox.phone.leader';
     var isLeader = false;
+    var audioContext = null;
+    var tone = { timer: null, osc: null, gain: null };
+    var incomingNotification = null;
 
     var ui = {
         dock: document.getElementById('vodnoxPhoneDock'),
@@ -268,6 +271,167 @@
         var m = Math.floor(seconds / 60);
         var s = seconds % 60;
         return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // ---------------------------------------------------------------------
+    // Ring tones (synthesised in the browser) and desktop notifications
+    //
+    // Stated limits:
+    //   * The tone is generated with the Web Audio API — nothing is downloaded
+    //     and no external audio service is contacted.
+    //   * Browsers block audio until the page has been interacted with, so the
+    //     audio context is primed on the "activate" button. If the browser
+    //     still refuses, the ring stays silent: answering the call and the
+    //     conversation audio are never blocked by a blocked ring.
+    //   * A desktop Notification is shown only after the employee grants
+    //     permission. When it is denied or unsupported, the in-page incoming
+    //     banner is the fallback.
+    //   * Notifications cannot reach a closed page: there is no service worker
+    //     or push subscription here, so calls are only received while the phone
+    //     page is open in a tab. Nothing here delivers calls in the background.
+    // ---------------------------------------------------------------------
+
+    function ensureAudioContext() {
+        if (audioContext) {
+            return audioContext;
+        }
+        var Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) {
+            return null;
+        }
+        try {
+            audioContext = new Ctor();
+        } catch (e) {
+            audioContext = null;
+        }
+        return audioContext;
+    }
+
+    function unlockAudio() {
+        var ctx = ensureAudioContext();
+        if (ctx && ctx.state === 'suspended') {
+            // The "activate" click is the user gesture the browser asks for.
+            var resumed = ctx.resume();
+            if (resumed && typeof resumed.catch === 'function') {
+                resumed.catch(function () { /* still blocked: the ring is skipped */ });
+            }
+        }
+    }
+
+    function stopTone() {
+        if (tone.timer) {
+            window.clearTimeout(tone.timer);
+            tone.timer = null;
+        }
+        if (tone.osc) {
+            try { tone.osc.stop(); } catch (e) { /* already stopped */ }
+            try { tone.osc.disconnect(); } catch (e) { /* ignore */ }
+            tone.osc = null;
+        }
+        if (tone.gain) {
+            try { tone.gain.disconnect(); } catch (e) { /* ignore */ }
+            tone.gain = null;
+        }
+    }
+
+    /**
+     * Play a ring cadence until stopTone() is called.
+     * kind: 'ringtone' for an incoming call, 'ringback' while an outgoing call
+     * is still ringing.
+     */
+    function startTone(kind) {
+        stopTone();
+
+        var ctx = ensureAudioContext();
+        if (!ctx) {
+            return;
+        }
+        if (ctx.state === 'suspended') {
+            var resumed = ctx.resume();
+            if (resumed && typeof resumed.catch === 'function') {
+                resumed.catch(function () { /* ignore */ });
+            }
+        }
+        if (ctx.state !== 'running') {
+            // Autoplay is blocked. Stay silent instead of throwing: the ring is
+            // cosmetic, the call itself must still work.
+            return;
+        }
+
+        var incoming = kind === 'ringtone';
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = incoming ? 480 : 425;
+        gain.gain.value = 0;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        try { osc.start(); } catch (e) { /* ignore */ }
+        tone.osc = osc;
+        tone.gain = gain;
+
+        // Incoming: 1s on / 1s off. Outgoing ringback: 1s on / 3s off.
+        var steps = incoming ? [1000, 1000] : [1000, 3000];
+        var level = incoming ? 0.15 : 0.08;
+        var index = 0;
+        var tick = function () {
+            var on = index % 2 === 0;
+            var now = ctx.currentTime;
+            try {
+                gain.gain.cancelScheduledValues(now);
+                gain.gain.setValueAtTime(gain.gain.value, now);
+                gain.gain.linearRampToValueAtTime(on ? level : 0, now + 0.04);
+            } catch (e) { /* ignore */ }
+            var wait = steps[index % steps.length];
+            index += 1;
+            tone.timer = window.setTimeout(tick, wait);
+        };
+        tick();
+    }
+
+    function requestNotificationPermission() {
+        if (!('Notification' in window) || window.Notification.permission !== 'default') {
+            return;
+        }
+        try {
+            var asked = window.Notification.requestPermission();
+            if (asked && typeof asked.catch === 'function') {
+                asked.catch(function () { /* denied: the in-page banner is used */ });
+            }
+        } catch (e) {
+            /* older callback-only implementations: ignore */
+        }
+    }
+
+    /**
+     * Show a desktop notification for an incoming call. Returns true only when
+     * one was actually shown; otherwise the in-page banner is the fallback.
+     */
+    function notifyIncoming(caller) {
+        if (!('Notification' in window) || window.Notification.permission !== 'granted') {
+            return false;
+        }
+        try {
+            incomingNotification = new window.Notification(strings.incomingTitle || 'Incoming call', {
+                body: caller,
+                tag: 'vodnox-incoming-call',
+                requireInteraction: true
+            });
+            incomingNotification.onclick = function () {
+                window.focus();
+            };
+            return true;
+        } catch (e) {
+            incomingNotification = null;
+            return false;
+        }
+    }
+
+    function closeIncomingNotification() {
+        if (incomingNotification) {
+            try { incomingNotification.close(); } catch (e) { /* ignore */ }
+            incomingNotification = null;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -594,6 +758,7 @@
         setMessage(strings.micHint || 'Allow microphone access when prompted.', null);
         showControls(true);
         setMessage(strings.calling || 'Calling…', null);
+        startTone('ringback');
 
         var inviter = new SIP.Inviter(ua, target);
         session = inviter;
@@ -646,12 +811,18 @@
         } catch (e) {
             from = '';
         }
+        var caller = from || (strings.unknownCaller || 'Unknown number');
         if (ui.incomingLabel) {
-            ui.incomingLabel.textContent = from || (strings.unknownCaller || 'Unknown number');
+            ui.incomingLabel.textContent = caller;
         }
         if (ui.incoming) {
             ui.incoming.hidden = false;
         }
+        // Ring and raise a desktop notification (the in-page banner above is
+        // always shown, so it remains the fallback when notifications are
+        // denied or unsupported). Neither can block answering.
+        startTone('ringtone');
+        notifyIncoming(caller);
         bindSession(invitation);
     }
 
@@ -661,6 +832,8 @@
         }
         var invitation = incomingInvitation;
         incomingInvitation = null;
+        stopTone();
+        closeIncomingNotification();
         session = invitation;
         if (ui.incoming) {
             ui.incoming.hidden = true;
@@ -680,6 +853,8 @@
         }
         var invitation = incomingInvitation;
         incomingInvitation = null;
+        stopTone();
+        closeIncomingNotification();
         if (ui.incoming) {
             ui.incoming.hidden = true;
         }
@@ -692,6 +867,8 @@
     }
 
     function hangup() {
+        stopTone();
+        closeIncomingNotification();
         if (incomingInvitation) {
             reject();
             return;
@@ -725,6 +902,9 @@
                     }
                     break;
                 case SIP.SessionState.Established:
+                    // The call is up: the negotiated audio replaces any ring.
+                    stopTone();
+                    closeIncomingNotification();
                     attachRemoteAudio(target);
                     startTimer();
                     setMessage(strings.inCall || 'In call', 'ok');
@@ -761,6 +941,10 @@
     }
 
     function endSession() {
+        // Covers every terminal path (ended, cancelled, rejected, failed): no
+        // ring or ringback may outlive the session.
+        stopTone();
+        closeIncomingNotification();
         if (session && session.sessionDescriptionHandler && session.sessionDescriptionHandler.peerConnection) {
             try {
                 session.sessionDescriptionHandler.peerConnection.getSenders().forEach(function (sender) {
@@ -818,6 +1002,10 @@
     // "Activate" also steals the phone from another tab: the other tab tears its
     // registration down instead of competing with this one.
     function activateHere() {
+        // A real user gesture: the only moment browsers let us unlock audio and
+        // ask for notification permission.
+        unlockAudio();
+        requestNotificationPermission();
         if (!isLeader) {
             if (channel) {
                 channel.postMessage({ type: 'takeover', id: tabId });
@@ -897,10 +1085,15 @@
         releaseLeadership();
     }
 
+    // Teardown runs on 'pagehide', the reliable, non-deprecated lifecycle
+    // event. The deprecated 'unload' event is deliberately NOT used: Chrome
+    // warns about it and it is unreliable, and 'pagehide' already covers real
+    // navigation and tab close.
     window.addEventListener('pagehide', releaseEverything);
+
+    // A real navigation would drop the WebSocket and the peer connection, so we
+    // confirm before leaving — but only while a call is actually in progress.
     window.addEventListener('beforeunload', function (event) {
-        // A full page load would drop the WebSocket and the peer connection,
-        // so an active call is confirmed before the browser navigates away.
         if (!session && !incomingInvitation) {
             return;
         }
@@ -908,11 +1101,14 @@
         event.returnValue = strings.leaveWarning || 'A call is in progress.';
         return event.returnValue;
     });
-    window.addEventListener('unload', releaseEverything);
+
+    // Moving the tab to the background (another tab, a minimised window, or the
+    // screen turning off) must never end the call or drop the registration.
+    // Only the leadership claim is refreshed when the tab becomes visible
+    // again; nothing is torn down here on purpose.
     document.addEventListener('visibilitychange', function () {
-        if (document.visibilityState === 'hidden' && !session) {
-            // Registration is kept while the tab is alive; only the session is
-            // torn down on unload. Nothing is done to microphones here.
+        if (document.visibilityState === 'visible' && isLeader) {
+            claimLeadership();
         }
     });
 

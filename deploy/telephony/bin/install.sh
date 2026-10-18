@@ -165,10 +165,14 @@ cat <<'MANUAL'
         asterisk -rx 'manager reload'
         asterisk -rx 'pjsip reload'
         asterisk -rx 'dialplan reload'
-        asterisk -rx 'http reload'
+        asterisk -rx 'core reload'      # re-reads http.conf (TLS/WSS)
+
+    There is NO 'http reload' CLI command on Asterisk 22. Use 'core reload'
+    above: it re-reads http.conf and does not drop active calls.
 
     A change of http.conf bindaddr/bindport is bound at module load: if the WSS
-    listener does not appear afterwards, ONE initial Asterisk restart is needed.
+    listener does not appear afterwards, ONE initial Asterisk restart is needed,
+    in a maintenance window (asterisk -rx 'core restart when convenient').
     That is the only restart, and it never happens per employee.
 MANUAL
 

@@ -31,9 +31,12 @@ Smart IVR) ولا تظهر إعدادات المؤسسة أو الاشتراكا
 | `asterisk/http.conf.snippet` | تفعيل WebSocket + WSS بـ TLS لـ SIP.js (`bindaddr`/`bindport` بالصيغة الصحيحة). |
 | `asterisk/extensions.conf.snippet` | توثيق تضمين `vodnox/dialplan/*.conf` وقاعدة العزل. |
 | `asterisk/manager.conf.snippet` | حساب AMI **للقراءة فقط** على loopback لمُرسل الأحداث. |
+| `asterisk/rtp.conf.snippet` | قالب قسم `[ice_host_candidates]` لحلّ انعدام الصوت خلف NAT (بلا STUN). القيم لكل سيرفر على حدة. |
 | `bin/install.sh` | تثبيت idempotent من 11 خطوة، **يكتشف إصدارات PHP** بدل افتراضها. |
 | `bin/backup.sh` | نسخة احتياطية لـ `/etc/asterisk` وحالة الوكيل (احتفاظ 14 نسخة). |
 | `bin/rollback.sh` | استرجاع نسخة سابقة مع نسخة وقائية قبل الاسترجاع. |
+| `bin/ice-candidates.sh` | كتابة `[ice_host_candidates]` بأمان: تحقق + نسخة احتياطية + منع تكرار القسم + كتابة ذرّية + `module reload` فقط. |
+| `certbot/vodnox-telephony-deploy-hook.sh` | deploy hook لـCertbot: يتحقق من الشهادة والمفتاح، ينسخ ذرّياً بالصلاحيات، و`core reload` بلا إعادة تشغيل. |
 | `bin/package.sh` | بناء حزمة النشر من **قائمة ملفات مسموحة** وفحص محتواها قبل التسليم. |
 | `.env.example` | متغيّرات الجهة التطبيقية (بلا أسرار). |
 
@@ -47,7 +50,7 @@ Smart IVR) ولا تظهر إعدادات المؤسسة أو الاشتراكا
 - `/var/lib/vodnox-telephony/state/` — سجلات idempotency وnonces وحالة المؤسسات/الأرقام.
 
 **لا يُعاد تشغيل Asterisk عند إنشاء موظف.** يُنفَّذ `pjsip reload` و`dialplan reload`
-فقط (و`http reload` عند تغيير قالب HTTP).
+فقط (و`core reload` عند تغيير قالب HTTP — لا وجود للأمر `http reload` في Asterisk 22).
 
 ---
 
@@ -141,15 +144,21 @@ sudo editor /etc/nginx/vodnox-allow.conf      # allow <egress-of-vodnox.com>;  �
 sudo asterisk -rx 'manager reload'
 sudo asterisk -rx 'pjsip reload'
 sudo asterisk -rx 'dialplan reload'
-sudo asterisk -rx 'http reload'
+sudo asterisk -rx 'core reload'      # يقرأ http.conf (الشهادة/WSS) بلا قطع المكالمات
+
+#    ملاحظة: لا وجود للأمر 'http reload' في Asterisk 22؛ استخدم 'core reload'.
+#    تغيير bindaddr/bindport في http.conf يُربَط عند تحميل الوحدة، وإن لم يظهر
+#    مستمع WSS بعده فاللازم إعادة تشغيل واحدة في نافذة صيانة:
+#        sudo asterisk -rx 'core restart when convenient'
+#    لا إعادة تشغيل تلقائية، ولا أثناء مكالمة.
 ```
 
 **إعادة التشغيل الأولية (مرة واحدة فقط):** تغيير `bindaddr`/`bindport` في
-`http.conf` يُربَط عند تحميل الوحدة، لا عند `http reload`. إن لم يظهر مستمع WSS
-على 8089 بعد `http reload`، نفّذ **إعادة تشغيل واحدة** لـ Asterisk:
-`sudo systemctl restart asterisk`. هذه الإعادة تخصّ تغيير قالب HTTP وحده،
-و**لا تحدث عند إنشاء موظف** — التزويد اليومي يستخدم `pjsip reload` و
-`dialplan reload` فقط.
+`http.conf` يُربَط عند تحميل الوحدة، لا عند `core reload`. إن لم يظهر مستمع WSS
+على 8089 بعد `core reload`، نفّذ **إعادة تشغيل واحدة** لـ Asterisk في نافذة صيانة:
+`sudo asterisk -rx 'core restart when convenient'` (ينتظر انتهاء المكالمات
+الجارية). هذه الإعادة تخصّ تغيير قالب HTTP وحده، و**لا تحدث عند إنشاء موظف** —
+التزويد اليومي يستخدم `pjsip reload` و`dialplan reload` فقط.
 
 `install.sh` يلتقط نسخة احتياطية قبل أي تعديل، وينشئ المجلدات القابلة للكتابة،
 ويثبّت nginx/php-fpm/systemd، ويشغّل الخدمة. إعادة تشغيله آمنة ولا تلمس
@@ -196,10 +205,46 @@ TELEPHONY_TURN_CREDENTIAL=
    أو WSS قبل تأكيد هذا السجل.
 2. **الشهادة**: شهادة موثوقة (Let's Encrypt أو CA المؤسسة) للنطاق نفسه، تُستخدم
    لـ `wss://...:8089/ws` ولوكيل التزويد على 443.
-   - `fullchain.pem` و`key.pem` إلى `/etc/asterisk/keys/` بصلاحية `asterisk`.
+   - الأصل عند Certbot: `/etc/letsencrypt/live/<domain>/{fullchain.pem,privkey.pem}`.
+   - النسخ التي يستخدمها Asterisk وNginx:
+     `/etc/asterisk/keys/<domain>.fullchain.pem` و`/etc/asterisk/keys/<domain>.key`
+     بصلاحيات `/etc/asterisk/keys` = `root:asterisk 0750` والملفين `root:asterisk 0640`.
    - **لا تُعطَّل الشهادة ولا يُتجاوز التحقق** في المتصفح أو في الوكيل.
-   - التجديد: `certbot renew` + hook ينفّذ `asterisk -rx 'http reload'` (بدون
-     إعادة تشغيل) و`systemctl reload nginx`.
+   - **التجديد**: Certbot يجدّد الأصل تلقائياً، لكن النسخ لا تتحدّث بلا hook.
+     ثبّت الـhook المرافق (راجع §7.1) ليُنسخ الأصل بعد كل تجديد ناجح.
+   - **تحديث HTTPS/WSS في Asterisk 22**: الطريق المدعوم هو `asterisk -rx 'core reload'`
+     — يعيد قراءة `http.conf` (بما فيه `tlscertfile`/`tlsprivatekey`) **دون قطع
+     المكالمات الجارية**.
+     **لا وجود للأمر `http reload` على هذا السيرفر** — لا تستخدمه.
+     و`module unload` لوحدات الهاتف ممنوع، وكذلك أي restart تلقائي أثناء المكالمات.
+     إن لم يلتقط مستمع WSS الشهادة الجديدة بعد `core reload`، فالتحديث يحتاج
+     **نافذة صيانة**: `asterisk -rx 'core restart when convenient'` (ينتظر انتهاء
+     المكالمات). الـhook لا ينفّذ ذلك تلقائياً؛ بل يسجّل تحذيراً صريحاً.
+
+#### 7.1 تركيب deploy hook للشهادات
+
+```bash
+# على سيرفر الاتصالات، مرة واحدة:
+sudo install -m 0755 deploy/telephony/certbot/vodnox-telephony-deploy-hook.sh \
+    /etc/letsencrypt/renewal-hooks/deploy/vodnox-telephony
+#    اضبط النطاق إن لزم:  VODNOX_TLS_DOMAIN=pbx.vodnox.com في رأس الملف أو في
+#    /etc/default/vodnox-telephony (المتغيّر يُقرأ منه إن وُجد).
+
+# فحص التجديد بلا إصدار شهادة حقيقية (يستدعي الـhook على بيئة staging):
+sudo certbot renew --dry-run --cert-name <domain>
+
+# تحقّق من أن النسخ تطابقت:
+sudo ls -l /etc/asterisk/keys/
+sudo openssl x509 -in /etc/asterisk/keys/<domain>.fullchain.pem -noout -subject -enddate
+echo | openssl s_client -connect 127.0.0.1:8089 -servername <domain> 2>/dev/null \
+    | openssl x509 -noout -fingerprint -sha256
+```
+
+> **إنشاء الملف داخل Git لا يعني تركيبه على السيرفر.** يبقى التركيب خطوة يدوية
+> واحدة، ويجب التحقق منها بالأوامر أعلاه.
+> نطاق عمل الـhook: يستبدل نسخ `/etc/asterisk/keys` **فقط**، ويتحقق من مطابقة
+> المفتاح للشهادة قبل الاستبدال، وإلا يترك الملفات السليمة كما هي.
+
 3. **WSS**: `http.conf` يفعّل `tlsenable=yes` على `0.0.0.0:8089`؛ يبقى HTTP
    الداخلي على `127.0.0.1:8088` (أو معطّلاً كما هو الآن).
 4. **NAT/RTP**: **نطاق RTP لا يُفترض.** اقرأ `rtpstart`/`rtpend` الفعليين من
@@ -210,6 +255,30 @@ TELEPHONY_TURN_CREDENTIAL=
    `rtp_symmetric=yes` + `rewrite_contact=yes` لكل endpoint، وإن كان السيرفر خلف
    NAT أضف `local_net` وحدود الفتح في `rtp.conf`. لا تُعطَّل الجدار ولا يُفتح مدى
    أوسع من النطاق المقروء.
+   - **قسم `[ice_host_candidates]` في `rtp.conf` — سبب نجاح الصوت فعلياً:**
+     السيرفر وراء NAT، وكان يعلن عنوانه الداخلي فقط داخل SDP، فكانت المكالمة
+     تتصل **بلا صوت باتجاهين**. الحل المطبَّق (وهو حلّ Asterisk الأصلي، بلا حاجة
+     إلى خادم STUN خارجي) هو إعلان العنوان العام كـ ICE host candidate:
+     ```ini
+     [ice_host_candidates]
+     172.16.100.20 => 38.3.184.246
+     ```
+     - `172.16.100.20` = العنوان الداخلي لهذا السيرفر، و`38.3.184.246` = عنوانه
+       العام. **هاتان قيمتا هذا السيرفر تحديداً**، وليستا افتراضاً لسيرفرات أخرى؛
+       لكل سيرفر زوجه الخاص.
+     - طُبِّق بـ`asterisk -rx 'module reload res_rtp_asterisk.so'`، وبعدها صارت
+       عدادات RTP تتحرك بالطرفين ونجح الصوت بين جهازين مختلفين.
+     - **لا تُزل هذا القسم ولا تستبدله بخدمة STUN غير موجودة.**
+     - القالب: `asterisk/rtp.conf.snippet`. والتطبيق الآمن (تحقق + نسخة احتياطية +
+       منع تكرار القسم + كتابة ذرّية + `module reload` فقط) عبر:
+       ```bash
+       sudo deploy/telephony/bin/ice-candidates.sh \
+           --private <private-ip> --public <public-ip>
+       ```
+       إعادة تطبيقه بنفس القيم على هذا السيرفر لا تغيّر شيئاً (idempotent) — آمن
+       ولا يكتب فوق الإعداد العامل بغير مبرر.
+     - متغيّر STUN في الجهة التطبيقية `TELEPHONY_SIP_ICE_URL` يبقى كما هو؛ لا
+       يُعتمد عليه لحلّ NAT السيرفر — الحلّ في `rtp.conf` أعلاه.
 5. **TURN**: يُضاف فقط عند وجود موظفين خلف NAT متماثل (symmetric NAT) تفشل فيه
    ICE. يُضاف عنوانه وبياناته عبر `TELEPHONY_TURN_*`، وتظهر تلقائياً في
    `iceServers` التي يتلقاها المتصفح.

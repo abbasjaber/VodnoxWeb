@@ -9,6 +9,23 @@
     user.telephony.credentials endpoint (Cache-Control: no-store) and are kept
     in memory only; nothing is written to localStorage/sessionStorage and no
     provisioning/signing secret ever reaches the browser.
+
+    Ringing and notifications (scope + limits):
+    * The incoming ring and the outgoing ringback are synthesised with the Web
+      Audio API in telephony.js — no audio file, and no external URL, is loaded.
+    * Browsers block audio until the page is interacted with, so the audio
+      context is primed on the "activate" button. If a browser still refuses,
+      the ring is simply silent: answering the call and the conversation audio
+      are never blocked by a blocked ring.
+    * The desktop notification is opt-in (permission is requested from the
+      "activate" click). When it is denied or unsupported, the in-page
+      #phoneIncoming banner — caller plus answer/reject buttons — is the
+      fallback.
+    * Notifications cannot reach a closed page: there is no service worker or
+      push subscription here, so a call is only received while this page is open
+      in a tab. There is no background-call delivery, and none is claimed.
+    * No audio is recorded and no microphone stream is uploaded anywhere; the
+      microphone is opened by SIP.js only for a placed or answered call.
 --}}
 @php
     // Copy handed to the browser phone. Kept out of the inline script so the JS
@@ -40,6 +57,7 @@
         'unavailable' => __('portal.agent.telephony_unavailable'),
         'leaveWarning' => __('portal.agent.telephony_leave_warning'),
         'unknownCaller' => __('portal.agent.telephony_unknown_caller'),
+        'incomingTitle' => __('portal.agent.telephony_incoming_title'),
         'peerBusy' => __('portal.agent.telephony_peer_busy'),
         'peerRejected' => __('portal.agent.telephony_peer_rejected'),
         'noAnswer' => __('portal.agent.telephony_no_answer'),
@@ -73,7 +91,7 @@
             <button type="button" class="rx-btn gold" id="phoneCallBtn">{{ __('portal.agent.telephony_call') }}</button>
         </div>
 
-        <div class="phone-incoming" id="phoneIncoming" hidden>
+        <div class="phone-incoming" id="phoneIncoming" role="alert" aria-live="assertive" hidden>
             <strong id="phoneIncomingLabel" dir="ltr"></strong>
             <div class="phone-row">
                 <button type="button" class="rx-btn primary" id="phoneAnswerBtn">{{ __('portal.agent.telephony_answer') }}</button>
