@@ -19,6 +19,13 @@
 # PATH and ownership is targeted at the current user. Nothing outside the
 # fixture directory is read or written.
 #
+# That isolation has to be complete. The hook behaves differently depending on
+# which commands it finds, and the GitHub Ubuntu runner ships nginx and systemd:
+# a test that quietly relied on `command -v nginx` failing was green on a laptop
+# and red in CI. A neutral stub for every command the hook probes for is
+# therefore installed with each fixture, and the suite asserts the hook cannot
+# reach the host's copy.
+#
 # Usage:  bash deploy/telephony/tests/certbot-deploy-hook.test.sh
 # Exit:   0 when every assertion holds, 1 otherwise.
 
@@ -125,6 +132,7 @@ fresh_fixture() {
     RENEWED_DOMAINS="${DOMAIN}"
     WSS_TIMEOUT=10
     rm -f "${STUBS}"/*
+    stub_defaults
     # Certbot runs deploy hooks as root; report uid 0 so the happy paths are
     # reachable (the single non-root case overrides this with stub_id_non_root).
     stub_id_root
@@ -254,6 +262,35 @@ STUB
 }
 
 # ---------------------------------------------------------------------------
+# Hermetic environment
+# ---------------------------------------------------------------------------
+
+# Neutral stubs for every command the hook probes for with `command -v`. They are
+# installed by fresh_fixture so the outcome of a test never depends on what the
+# host happens to have installed; a test that needs a different behaviour
+# overrides the stub it cares about (stub_nginx_test_fails, stub_systemctl_fails,
+# stub_asterisk, ...).
+stub_defaults() {
+    stub_asterisk
+    stub_nginx_ok
+    stub_systemctl_ok
+}
+
+# The guarantees under test only mean something if the hook really consulted the
+# stubs. This fails loudly — and says which host command leaked in — instead of
+# letting a host-installed nginx/systemd silently steer the hook.
+assert_hook_env_is_isolated() {
+    local c resolved
+    for c in id asterisk nginx systemctl; do
+        resolved="$(PATH="${STUBS}:/usr/bin:/bin:/usr/sbin:/sbin" command -v "${c}" 2>/dev/null || true)"
+        case "${resolved}" in
+            "${STUBS}/"*) ok "the hook's ${c} is the stub (not a host copy)" ;;
+            *) bad "the hook's ${c} is the stub, but resolved to [${resolved}]" ;;
+        esac
+    done
+}
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -288,6 +325,15 @@ backup_count() {
         printf '0'
     fi
 }
+
+# ===========================================================================
+# 0. The fixture is hermetic: the host's own nginx / systemd / asterisk can
+#    never answer a probe the hook makes.
+# ===========================================================================
+
+printf '\n== the fixture does not leak host commands ==\n'
+fresh_fixture
+assert_hook_env_is_isolated
 
 # ===========================================================================
 # 1. It only acts on the certificate it was told about.
@@ -471,6 +517,8 @@ assert_eq "$(backup_count)" "2" "the nginx reload failing: the backups are kept 
 
 printf '\n== the WSS check cannot hang ==\n'
 fresh_fixture
+# nginx and systemctl keep the neutral defaults from the fixture on purpose: the
+# point here is the bounded WSS probe, so no unrelated step may fail first.
 stub_openssl_slow
 stub_asterisk
 WSS_TIMEOUT=2

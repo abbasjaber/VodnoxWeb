@@ -277,6 +277,8 @@ echo | openssl s_client -connect 127.0.0.1:8089 -servername <domain> 2>/dev/null
 bash deploy/telephony/tests/certbot-deploy-hook.test.sh
 # يغطّي: ثبات صلاحيات/ملكية المجلدات الآب، رفض المسارات العامة، الإرجاع عند فشل
 # nginx، حدّ مهلة WSS، مطابقة الشهادة المقدَّمة، ومنع أي restart/unload.
+# الاختبار مستقلّ عن المضيف: يثبّت stub خاصاً لكل أمر يفحصه الـhook
+# (nginx/systemctl/asterisk/id)، فلا يغيّر وجودها أو غيابها على الجهاز النتيجة.
 ```
 
 3. **WSS**: `http.conf` يفعّل `tlsenable=yes` على `0.0.0.0:8089`؛ يبقى HTTP
