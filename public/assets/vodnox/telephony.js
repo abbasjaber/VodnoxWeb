@@ -63,8 +63,11 @@
     var leaderKey = 'vodnox.phone.leader';
     var isLeader = false;
     var audioContext = null;
-    var tone = { timer: null, osc: null, gain: null };
+    var tone = { timer: null, nodes: [] };
     var incomingNotification = null;
+    var notificationAsked = false;
+    var answering = false;
+    var callerLabel = '';
 
     var ui = {
         dock: document.getElementById('vodnoxPhoneDock'),
@@ -76,6 +79,10 @@
         controls: document.getElementById('phoneCallControls'),
         incoming: document.getElementById('phoneIncoming'),
         incomingLabel: document.getElementById('phoneIncomingLabel'),
+        incomingAvatar: document.getElementById('phoneIncomingAvatar'),
+        incomingExtension: document.getElementById('phoneIncomingExtension'),
+        incomingSound: document.getElementById('phoneIncomingSound'),
+        incomingSoundBtn: document.getElementById('phoneIncomingSoundBtn'),
         timer: document.getElementById('phoneTimer'),
         mute: document.getElementById('phoneMuteBtn'),
         hangup: document.getElementById('phoneHangupBtn'),
@@ -278,18 +285,44 @@
     //
     // Stated limits:
     //   * The tone is generated with the Web Audio API — nothing is downloaded
-    //     and no external audio service is contacted.
+    //     and no external audio service is contacted. No audio file ships with
+    //     the application, so there is nothing for the deploy to exclude.
+    //   * The incoming ring is a short two-note motif repeated on a slow
+    //     cadence: recognisably VODNOX, short enough not to be abrasive and
+    //     quiet enough to sit under a conversation.
     //   * Browsers block audio until the page has been interacted with, so the
-    //     audio context is primed on the "activate" button. If the browser
-    //     still refuses, the ring stays silent: answering the call and the
-    //     conversation audio are never blocked by a blocked ring.
-    //   * A desktop Notification is shown only after the employee grants
-    //     permission. When it is denied or unsupported, the in-page incoming
-    //     banner is the fallback.
+    //     audio context is primed on the "activate" button and on the first
+    //     interaction anywhere. If the browser still refuses, the incoming
+    //     window says so and offers an explicit "enable sound" action: the ring
+    //     stays cosmetic, answering and the conversation are never blocked.
+    //   * Every oscillator and timer the ring creates is released on answer,
+    //     reject, caller cancel, hang-up and transport loss, plus the moment the
+    //     call is established — no cadence outlives the ringing.
+    //   * A desktop Notification is opt-in (asked at most once per page load,
+    //     from a click) and is only raised while the tab is in the background.
+    //     The in-page incoming window is the interface, and remains so when the
+    //     notification is denied or unsupported.
     //   * Notifications cannot reach a closed page: there is no service worker
     //     or push subscription here, so calls are only received while the phone
     //     page is open in a tab. Nothing here delivers calls in the background.
     // ---------------------------------------------------------------------
+
+    // A two-note "ding-dong" (E5 then C5) — a chime, not a beep. Each note is a
+    // sine plus its octave at a third of the level, which is what gives it a
+    // bell-like edge without any sample.
+    var RING_MOTIF = [
+        { freq: 659.25, at: 0, dur: 0.34 },
+        { freq: 523.25, at: 0.36, dur: 0.48 }
+    ];
+    var RING_CADENCE = 2600;
+    var RING_LEVEL = 0.11;
+    // The outgoing ringback stays deliberately plain: it plays to the person
+    // who is already holding the phone to their ear.
+    var RINGBACK_MOTIF = [{ freq: 425, at: 0, dur: 1 }];
+    var RINGBACK_CADENCE = 4000;
+    var RINGBACK_LEVEL = 0.05;
+
+    var AVATAR_PHONE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m7 3 3 5-3 3a15 15 0 0 0 6 6l3-3 5 3-1 4C10 22 2 14 3 4l4-1Z"/></svg>';
 
     function ensureAudioContext() {
         if (audioContext) {
@@ -307,15 +340,66 @@
         return audioContext;
     }
 
+    /**
+     * Resume the audio context from a user gesture and, once the browser has
+     * actually allowed it, retry a ring that is already waiting. `resume()` flips
+     * the context to "running" asynchronously, so a ring started in the same tick
+     * would still be refused — hence the promise chain.
+     */
     function unlockAudio() {
         var ctx = ensureAudioContext();
-        if (ctx && ctx.state === 'suspended') {
-            // The "activate" click is the user gesture the browser asks for.
-            var resumed = ctx.resume();
-            if (resumed && typeof resumed.catch === 'function') {
-                resumed.catch(function () { /* still blocked: the ring is skipped */ });
+        if (!ctx) {
+            return;
+        }
+        if (ctx.state === 'suspended') {
+            try {
+                var resumed = ctx.resume();
+                if (resumed && typeof resumed.then === 'function') {
+                    resumed.then(retryRing).catch(function () { /* still blocked: the ring is skipped */ });
+                    return;
+                }
+            } catch (e) {
+                /* ignore */
             }
         }
+        retryRing();
+    }
+
+    /**
+     * Start the ring again for a call that is still waiting, once the browser
+     * will let us play it. A no-op when nothing is ringing or the ring is
+     * already sounding.
+     */
+    function retryRing() {
+        if (!incomingInvitation || tone.timer) {
+            return;
+        }
+        if (startTone('ringtone')) {
+            hideSoundNotice();
+        }
+    }
+
+    /**
+     * Release every oscillator the ring created. Each note stops itself at the
+     * end of its envelope, so this only matters for a note that is still
+     * sounding — and for not leaking nodes from one ring into the next.
+     */
+    function releaseToneNodes() {
+        tone.nodes.forEach(function (node) {
+            try {
+                if (typeof node.stop === 'function') {
+                    node.stop();
+                }
+            } catch (e) {
+                /* already stopped */
+            }
+            try {
+                node.disconnect();
+            } catch (e) {
+                /* ignore */
+            }
+        });
+        tone.nodes = [];
     }
 
     function stopTone() {
@@ -323,80 +407,133 @@
             window.clearTimeout(tone.timer);
             tone.timer = null;
         }
-        if (tone.osc) {
-            try { tone.osc.stop(); } catch (e) { /* already stopped */ }
-            try { tone.osc.disconnect(); } catch (e) { /* ignore */ }
-            tone.osc = null;
-        }
-        if (tone.gain) {
-            try { tone.gain.disconnect(); } catch (e) { /* ignore */ }
-            tone.gain = null;
-        }
+        releaseToneNodes();
+    }
+
+    /**
+     * Schedule one motif against the audio clock. The envelope is what turns a
+     * bare oscillator into a chime: a 20ms attack and a decay back to silence.
+     */
+    function playMotif(ctx, motif, level) {
+        var start = ctx.currentTime + 0.02;
+
+        motif.forEach(function (note) {
+            var from = start + note.at;
+            var until = from + note.dur;
+            var osc = ctx.createOscillator();
+            var harmonic = ctx.createOscillator();
+            var harmonicGain = ctx.createGain();
+            var gain = ctx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(note.freq, from);
+            harmonic.type = 'sine';
+            harmonic.frequency.setValueAtTime(note.freq * 2, from);
+            harmonicGain.gain.value = 0.28;
+
+            gain.gain.setValueAtTime(0.0001, from);
+            gain.gain.linearRampToValueAtTime(level, from + 0.02);
+            gain.gain.linearRampToValueAtTime(level * 0.55, from + note.dur * 0.45);
+            gain.gain.linearRampToValueAtTime(0.0001, until);
+
+            osc.connect(gain);
+            harmonic.connect(harmonicGain);
+            harmonicGain.connect(gain);
+            gain.connect(ctx.destination);
+
+            try {
+                osc.start(from);
+                osc.stop(until + 0.05);
+            } catch (e) {
+                /* ignore */
+            }
+            try {
+                harmonic.start(from);
+                harmonic.stop(until + 0.05);
+            } catch (e) {
+                /* ignore */
+            }
+
+            tone.nodes.push(osc, harmonic, harmonicGain, gain);
+        });
     }
 
     /**
      * Play a ring cadence until stopTone() is called.
      * kind: 'ringtone' for an incoming call, 'ringback' while an outgoing call
      * is still ringing.
+     * Returns true only when the browser actually let the sound start.
      */
     function startTone(kind) {
         stopTone();
 
         var ctx = ensureAudioContext();
         if (!ctx) {
-            return;
+            return false;
         }
         if (ctx.state === 'suspended') {
-            var resumed = ctx.resume();
-            if (resumed && typeof resumed.catch === 'function') {
-                resumed.catch(function () { /* ignore */ });
+            try {
+                var resumed = ctx.resume();
+                if (resumed && typeof resumed.catch === 'function') {
+                    resumed.catch(function () { /* ignore */ });
+                }
+            } catch (e) {
+                /* ignore */
             }
         }
         if (ctx.state !== 'running') {
             // Autoplay is blocked. Stay silent instead of throwing: the ring is
             // cosmetic, the call itself must still work.
-            return;
+            return false;
         }
 
         var incoming = kind === 'ringtone';
-        var osc = ctx.createOscillator();
-        var gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = incoming ? 480 : 425;
-        gain.gain.value = 0;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        try { osc.start(); } catch (e) { /* ignore */ }
-        tone.osc = osc;
-        tone.gain = gain;
+        var motif = incoming ? RING_MOTIF : RINGBACK_MOTIF;
+        var cadence = incoming ? RING_CADENCE : RINGBACK_CADENCE;
+        var level = incoming ? RING_LEVEL : RINGBACK_LEVEL;
 
-        // Incoming: 1s on / 1s off. Outgoing ringback: 1s on / 3s off.
-        var steps = incoming ? [1000, 1000] : [1000, 3000];
-        var level = incoming ? 0.15 : 0.08;
-        var index = 0;
-        var tick = function () {
-            var on = index % 2 === 0;
-            var now = ctx.currentTime;
-            try {
-                gain.gain.cancelScheduledValues(now);
-                gain.gain.setValueAtTime(gain.gain.value, now);
-                gain.gain.linearRampToValueAtTime(on ? level : 0, now + 0.04);
-            } catch (e) { /* ignore */ }
-            var wait = steps[index % steps.length];
-            index += 1;
-            tone.timer = window.setTimeout(tick, wait);
+        var cycle = function () {
+            if (!audioContext) {
+                tone.timer = null;
+                return;
+            }
+            // The previous cycle's notes have already finished; releasing them
+            // keeps exactly one cycle of nodes alive at a time.
+            releaseToneNodes();
+            playMotif(audioContext, motif, level);
+            tone.timer = window.setTimeout(cycle, cadence);
         };
-        tick();
+        cycle();
+
+        return true;
+    }
+
+    function showSoundNotice() {
+        if (ui.incomingSound) {
+            ui.incomingSound.hidden = false;
+        }
+    }
+
+    function hideSoundNotice() {
+        if (ui.incomingSound) {
+            ui.incomingSound.hidden = true;
+        }
     }
 
     function requestNotificationPermission() {
+        // At most one request per page load, and only while the browser is still
+        // undecided. A denied or ignored prompt is never repeated on its own.
+        if (notificationAsked) {
+            return;
+        }
+        notificationAsked = true;
         if (!('Notification' in window) || window.Notification.permission !== 'default') {
             return;
         }
         try {
             var asked = window.Notification.requestPermission();
             if (asked && typeof asked.catch === 'function') {
-                asked.catch(function () { /* denied: the in-page banner is used */ });
+                asked.catch(function () { /* denied: the in-page window is used */ });
             }
         } catch (e) {
             /* older callback-only implementations: ignore */
@@ -404,11 +541,16 @@
     }
 
     /**
-     * Show a desktop notification for an incoming call. Returns true only when
-     * one was actually shown; otherwise the in-page banner is the fallback.
+     * Complement the in-page window with a desktop notification, and only while
+     * the tab is in the background — the window itself is the interface. It
+     * cannot appear over other phone applications and cannot reach a closed page
+     * (there is no service worker here). Returns true only when one was shown.
      */
     function notifyIncoming(caller) {
         if (!('Notification' in window) || window.Notification.permission !== 'granted') {
+            return false;
+        }
+        if (document.visibilityState === 'visible') {
             return false;
         }
         try {
@@ -432,6 +574,67 @@
             try { incomingNotification.close(); } catch (e) { /* ignore */ }
             incomingNotification = null;
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Incoming window (<dialog>)
+    //
+    // A real modal in the top layer: centred, never clipped by an ancestor and
+    // with the keyboard focus trapped inside. There is no window.open, no
+    // backdrop dismissal and no Escape dismissal — a window that could be
+    // closed while the call still rings would leave a call with no interface.
+    // ---------------------------------------------------------------------
+
+    function initialsFor(text) {
+        var parts = String(text || '').trim().split(/[\s._-]+/).filter(Boolean);
+        if (!parts.length) {
+            return '';
+        }
+        if (parts.length === 1) {
+            return parts[0].slice(0, 2).toUpperCase();
+        }
+
+        return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+    }
+
+    function directoryNameFor(extension) {
+        var match = '';
+        directory.forEach(function (entry) {
+            if (String(entry.extension) === String(extension)) {
+                match = entry.name;
+            }
+        });
+
+        return match;
+    }
+
+    function openIncomingDialog() {
+        if (!ui.incoming) {
+            return;
+        }
+        // Re-opening a dialog that is already up would stack windows and steal
+        // focus again on every retransmitted INVITE.
+        if (typeof ui.incoming.showModal === 'function') {
+            if (!ui.incoming.open) {
+                ui.incoming.showModal();
+            }
+            return;
+        }
+        ui.incoming.setAttribute('open', '');
+    }
+
+    function closeIncomingDialog() {
+        if (!ui.incoming) {
+            return;
+        }
+        hideSoundNotice();
+        if (typeof ui.incoming.close === 'function') {
+            if (ui.incoming.open) {
+                ui.incoming.close();
+            }
+            return;
+        }
+        ui.incoming.removeAttribute('open');
     }
 
     // ---------------------------------------------------------------------
@@ -804,6 +1007,7 @@
             return;
         }
         incomingInvitation = invitation;
+        answering = false;
         sessionKind = 'incoming';
         var from = '';
         try {
@@ -811,33 +1015,57 @@
         } catch (e) {
             from = '';
         }
-        var caller = from || (strings.unknownCaller || 'Unknown number');
+        // Name and number are only shown from what the directory already gives
+        // the phone; nothing is looked up per call and nothing is guessed.
+        var knownName = from ? directoryNameFor(from) : '';
+        callerLabel = knownName || from || (strings.unknownCaller || 'Unknown number');
+
         if (ui.incomingLabel) {
-            ui.incomingLabel.textContent = caller;
+            ui.incomingLabel.textContent = callerLabel;
         }
-        if (ui.incoming) {
-            ui.incoming.hidden = false;
+        if (ui.incomingExtension) {
+            ui.incomingExtension.textContent = from;
         }
-        // Ring and raise a desktop notification (the in-page banner above is
-        // always shown, so it remains the fallback when notifications are
-        // denied or unsupported). Neither can block answering.
-        startTone('ringtone');
-        notifyIncoming(caller);
+        if (ui.incomingAvatar) {
+            var initials = initialsFor(knownName || from);
+            if (initials) {
+                ui.incomingAvatar.textContent = initials;
+            } else {
+                ui.incomingAvatar.innerHTML = AVATAR_PHONE_ICON;
+            }
+        }
+        if (ui.incomingSoundBtn) {
+            ui.incomingSoundBtn.disabled = false;
+        }
+
+        openIncomingDialog();
+
+        // Ring, and raise a desktop notification. The in-page window above is
+        // always shown, so it remains the interface when the notification is
+        // denied or unsupported, or when the browser blocks the ring. Neither
+        // can block answering.
+        if (!startTone('ringtone')) {
+            showSoundNotice();
+        } else {
+            hideSoundNotice();
+        }
+        notifyIncoming(callerLabel);
         bindSession(invitation);
     }
 
     function answer() {
-        if (!incomingInvitation) {
+        // The guard both stops a double click and stops a second accept on the
+        // same invitation; SIP.js would otherwise see two answers.
+        if (!incomingInvitation || answering) {
             return;
         }
+        answering = true;
         var invitation = incomingInvitation;
         incomingInvitation = null;
         stopTone();
         closeIncomingNotification();
+        closeIncomingDialog();
         session = invitation;
-        if (ui.incoming) {
-            ui.incoming.hidden = true;
-        }
         showControls(true);
         // SIP.js requests the microphone here; a refusal or a missing device
         // rejects the promise with a name we can translate.
@@ -848,16 +1076,15 @@
     }
 
     function reject() {
-        if (!incomingInvitation) {
+        if (!incomingInvitation || answering) {
             return;
         }
+        answering = true;
         var invitation = incomingInvitation;
         incomingInvitation = null;
         stopTone();
         closeIncomingNotification();
-        if (ui.incoming) {
-            ui.incoming.hidden = true;
-        }
+        closeIncomingDialog();
         try {
             invitation.reject();
         } catch (e) {
@@ -913,6 +1140,8 @@
                     if (target === session || target === incomingInvitation) {
                         setMessage(terminalReason || strings.ended || 'Call ended', terminalReason ? 'warn' : null);
                     }
+                    // A caller who hangs up before the answer takes the window,
+                    // the ring and any notification with them.
                     endSession();
                     break;
             }
@@ -945,6 +1174,7 @@
         // ring or ringback may outlive the session.
         stopTone();
         closeIncomingNotification();
+        closeIncomingDialog();
         if (session && session.sessionDescriptionHandler && session.sessionDescriptionHandler.peerConnection) {
             try {
                 session.sessionDescriptionHandler.peerConnection.getSenders().forEach(function (sender) {
@@ -961,11 +1191,10 @@
         incomingInvitation = null;
         pendingCall = false;
         terminalReason = null;
+        answering = false;
+        callerLabel = '';
         stopTimer();
         showControls(false);
-        if (ui.incoming) {
-            ui.incoming.hidden = true;
-        }
         if (ui.mute) {
             ui.mute.setAttribute('aria-pressed', 'false');
         }
@@ -1019,6 +1248,21 @@
     if (ui.activate) {
         ui.activate.addEventListener('click', activateHere);
     }
+    // A call can arrive before the employee has touched anything, and browsers
+    // only unlock audio from a gesture — so the first interaction anywhere in
+    // the page primes the audio context too.
+    var audioPrimed = false;
+    function primeAudioOnce() {
+        if (audioPrimed) {
+            return;
+        }
+        audioPrimed = true;
+        document.removeEventListener('pointerdown', primeAudioOnce, true);
+        document.removeEventListener('keydown', primeAudioOnce, true);
+        unlockAudio();
+    }
+    document.addEventListener('pointerdown', primeAudioOnce, true);
+    document.addEventListener('keydown', primeAudioOnce, true);
     if (ui.call) {
         ui.call.addEventListener('click', function () {
             placeCall(ui.dial ? ui.dial.value : '');
@@ -1029,6 +1273,22 @@
     }
     if (ui.reject) {
         ui.reject.addEventListener('click', reject);
+    }
+    // Escape must not dismiss the incoming window: an answerable call would be
+    // left ringing with no interface. The dialog's backdrop click is inert too
+    // (there is no click handler), so only the two buttons change the call.
+    if (ui.incoming) {
+        ui.incoming.addEventListener('cancel', function (event) {
+            event.preventDefault();
+        });
+    }
+    // The sound notice appears when the browser blocked the ring; this gesture
+    // is what lets the browser start it again.
+    if (ui.incomingSoundBtn) {
+        ui.incomingSoundBtn.addEventListener('click', function () {
+            ui.incomingSoundBtn.disabled = true;
+            unlockAudio();
+        });
     }
     if (ui.hangup) {
         ui.hangup.addEventListener('click', hangup);

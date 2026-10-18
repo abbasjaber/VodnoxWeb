@@ -448,5 +448,12 @@ return [
         'telephony_no_answer' => 'No answer.',
         'telephony_network_lost' => 'Connection to the telephony server was lost. Reconnecting…',
         'telephony_sip_missing' => 'The browser phone library could not be loaded. Reload the page; if it keeps failing, contact support.',
+        'telephony_incoming_answer' => 'Answer',
+        'telephony_incoming_reject' => 'Reject',
+        'telephony_incoming_ringing' => 'Ringing now…',
+        'telephony_incoming_missed' => 'Missed call',
+        'telephony_incoming_sound_blocked' => 'The browser blocked the ringtone. Enable sound to hear it — you can still answer.',
+        'telephony_incoming_sound_enable' => 'Enable sound',
+        'telephony_incoming_scope' => 'Incoming calls appear only while this page is open — they cannot reach you once it is closed.',
     ],
 ];

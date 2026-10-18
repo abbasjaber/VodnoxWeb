@@ -13,14 +13,22 @@
     Ringing and notifications (scope + limits):
     * The incoming ring and the outgoing ringback are synthesised with the Web
       Audio API in telephony.js — no audio file, and no external URL, is loaded.
+      The incoming ring is a short two-note VODNOX motif repeated on a slow
+      cadence; every oscillator and timer it creates is released the moment the
+      call is answered, rejected, cancelled or ended.
     * Browsers block audio until the page is interacted with, so the audio
-      context is primed on the "activate" button. If a browser still refuses,
-      the ring is simply silent: answering the call and the conversation audio
-      are never blocked by a blocked ring.
-    * The desktop notification is opt-in (permission is requested from the
-      "activate" click). When it is denied or unsupported, the in-page
-      #phoneIncoming banner — caller plus answer/reject buttons — is the
-      fallback.
+      context is primed on the "activate" button and on the first gesture of the
+      page. If a browser still refuses, the incoming window says so and offers an
+      "enable sound" action: the ring is cosmetic, answering the call and the
+      conversation audio are never blocked by a blocked ring.
+    * The incoming call is an in-page <dialog> centred over the workspace
+      (aria-modal, native focus trap, Escape is refused on purpose). It is not a
+      window.open popup and it cannot be dismissed to leave a call ringing
+      headless.
+    * The desktop notification is opt-in (permission is requested at most once
+      per page load, from an explicit click). It is only raised while the tab is
+      in the background; the in-page window remains the interface even when the
+      notification is denied or unsupported.
     * Notifications cannot reach a closed page: there is no service worker or
       push subscription here, so a call is only received while this page is open
       in a tab. There is no background-call delivery, and none is claimed.
@@ -63,6 +71,13 @@
         'noAnswer' => __('portal.agent.telephony_no_answer'),
         'networkLost' => __('portal.agent.telephony_network_lost'),
         'sipMissing' => __('portal.agent.telephony_sip_missing'),
+        'incomingAnswer' => __('portal.agent.telephony_incoming_answer'),
+        'incomingReject' => __('portal.agent.telephony_incoming_reject'),
+        'incomingRinging' => __('portal.agent.telephony_incoming_ringing'),
+        'incomingMissed' => __('portal.agent.telephony_incoming_missed'),
+        'soundBlocked' => __('portal.agent.telephony_incoming_sound_blocked'),
+        'soundEnable' => __('portal.agent.telephony_incoming_sound_enable'),
+        'incomingScope' => __('portal.agent.telephony_incoming_scope'),
     ];
 @endphp
 
@@ -91,14 +106,6 @@
             <button type="button" class="rx-btn gold" id="phoneCallBtn">{{ __('portal.agent.telephony_call') }}</button>
         </div>
 
-        <div class="phone-incoming" id="phoneIncoming" role="alert" aria-live="assertive" hidden>
-            <strong id="phoneIncomingLabel" dir="ltr"></strong>
-            <div class="phone-row">
-                <button type="button" class="rx-btn primary" id="phoneAnswerBtn">{{ __('portal.agent.telephony_answer') }}</button>
-                <button type="button" class="rx-btn danger" id="phoneRejectBtn">{{ __('portal.agent.telephony_reject') }}</button>
-            </div>
-        </div>
-
         <div class="phone-controls" id="phoneCallControls" hidden>
             <span class="phone-timer" id="phoneTimer" dir="ltr">00:00</span>
             <button type="button" class="rx-btn" id="phoneMuteBtn" aria-pressed="false">{{ __('portal.agent.telephony_mute') }}</button>
@@ -114,6 +121,49 @@
 
         <audio id="phoneRemoteAudio" hidden></audio>
     </div>
+
+    {{--
+        The incoming call window.
+
+        It is an in-page <dialog> opened with showModal(): the browser centres it,
+        puts it in the top layer (so no ancestor overflow or transform can clip
+        it) and keeps the keyboard focus inside it. There is deliberately no
+        window.open and no backdrop-click or Escape dismissal — closing it while
+        the call still rings would leave a call with no interface.
+    --}}
+    <dialog id="phoneIncoming" class="phone-incoming" role="alertdialog" aria-modal="true"
+            aria-labelledby="phoneIncomingTitle" aria-describedby="phoneIncomingLabel">
+        <div class="incoming-inner">
+            <p class="incoming-brand">VODNOX</p>
+            <h2 id="phoneIncomingTitle">{{ __('portal.agent.telephony_incoming_title') }}</h2>
+
+            <div class="incoming-orbit" aria-hidden="true">
+                <span class="incoming-avatar" id="phoneIncomingAvatar"></span>
+            </div>
+
+            <strong class="incoming-name" id="phoneIncomingLabel"></strong>
+            <span class="incoming-extension" id="phoneIncomingExtension" dir="ltr"></span>
+            <p class="incoming-state" id="phoneIncomingState">{{ __('portal.agent.telephony_incoming_ringing') }}</p>
+
+            <p class="incoming-sound" id="phoneIncomingSound" hidden>
+                <span>{{ __('portal.agent.telephony_incoming_sound_blocked') }}</span>
+                <button type="button" class="rx-btn incoming-sound-btn" id="phoneIncomingSoundBtn">{{ __('portal.agent.telephony_incoming_sound_enable') }}</button>
+            </p>
+
+            <div class="incoming-actions">
+                <button type="button" class="rx-btn incoming-answer" id="phoneAnswerBtn" autofocus>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m7 3 3 5-3 3a15 15 0 0 0 6 6l3-3 5 3-1 4C10 22 2 14 3 4l4-1Z"/></svg>
+                    <span>{{ __('portal.agent.telephony_incoming_answer') }}</span>
+                </button>
+                <button type="button" class="rx-btn incoming-reject" id="phoneRejectBtn">
+                    <svg class="incoming-reject-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m7 3 3 5-3 3a15 15 0 0 0 6 6l3-3 5 3-1 4C10 22 2 14 3 4l4-1Z"/></svg>
+                    <span>{{ __('portal.agent.telephony_incoming_reject') }}</span>
+                </button>
+            </div>
+
+            <p class="incoming-scope">{{ __('portal.agent.telephony_incoming_scope') }}</p>
+        </div>
+    </dialog>
 </section>
 
 @push('styles')

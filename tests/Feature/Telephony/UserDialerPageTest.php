@@ -113,13 +113,51 @@ class UserDialerPageTest extends TestCase
         $this->assertStringContainsString("\n            vendor/**", $workflow);
     }
 
-    public function test_the_incoming_alert_is_marked_for_assistive_technology(): void
+    public function test_the_incoming_call_uses_an_in_page_modal_dialog(): void
     {
         $response = $this->actingAs($this->agent)->get(route('user.index'))->assertOk();
 
-        $response->assertSee('id="phoneIncoming" role="alert"', false);
-        $response->assertSee('aria-live="assertive"', false);
+        // An in-page <dialog> marked as a modal alert dialog (not a banner and
+        // not a window.open popup), carrying the caller identity and both
+        // actions so the window is usable on its own.
+        $response->assertSee('id="phoneIncoming" class="phone-incoming" role="alertdialog" aria-modal="true"', false);
+        $response->assertSee('aria-labelledby="phoneIncomingTitle"', false);
         $response->assertSee('id="phoneIncomingLabel"', false);
+        $response->assertSee('id="phoneIncomingExtension"', false);
+        $response->assertSee('id="phoneIncomingAvatar"', false);
+        $response->assertSee('id="phoneIncomingSoundBtn"', false);
+        $response->assertSee('id="phoneIncomingSound"', false);
+        $response->assertSee('id="phoneAnswerBtn"', false);
+        $response->assertSee('id="phoneRejectBtn"', false);
+        $response->assertDontSee('role="alert" aria-live="assertive"', false);
+    }
+
+    public function test_the_incoming_window_is_opened_natively_and_cannot_be_dismissed(): void
+    {
+        $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
+
+        // The native modal API is what puts the window in the top layer, centres
+        // it and traps the focus; window.open is deliberately never used.
+        $this->assertStringContainsString('showModal()', $script);
+        $this->assertStringNotContainsString('window.open(', $script);
+        // Escape is refused (and a backdrop click is inert), so an answerable
+        // call can never be left ringing with no interface.
+        $this->assertStringContainsString("addEventListener('cancel'", $script);
+        $this->assertStringContainsString('preventDefault()', $script);
+    }
+
+    public function test_the_incoming_call_guards_against_double_answers_and_duplicate_windows(): void
+    {
+        $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
+
+        // One window per call: showModal is only reached through a guard that
+        // skips an already-open dialog, and both actions share an "answering"
+        // latch so a double click cannot answer or reject twice.
+        $this->assertStringContainsString('if (!ui.incoming.open)', $script);
+        $this->assertStringContainsString('answering', $script);
+        $this->assertStringContainsString('if (!incomingInvitation || answering)', $script);
+        // A second INVITE while busy is still rejected cleanly.
+        $this->assertStringContainsString('statusCode: 486', $script);
     }
 
     public function test_the_ring_tone_is_generated_locally_with_no_external_asset(): void
@@ -129,6 +167,23 @@ class UserDialerPageTest extends TestCase
         $this->assertStringContainsString('AudioContext', $script);
         $this->assertStringNotContainsString('new Audio(', $script);
         $this->assertDoesNotMatchRegularExpression('~https?://[^"\')\s]+\.(mp3|wav|ogg)~i', $script);
+        // A repeating two-note motif, not a single beep, and the notes are
+        // released between cycles so nothing accumulates.
+        $this->assertStringContainsString('RING_MOTIF', $script);
+        $this->assertStringContainsString('RING_CADENCE', $script);
+        $this->assertStringContainsString('releaseToneNodes', $script);
+    }
+
+    public function test_a_blocked_ring_offers_an_explicit_enable_sound_action_without_blocking_the_call(): void
+    {
+        $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
+
+        // startTone reports whether the browser let the sound start; when it did
+        // not, the window shows the notice and its button, and answering still
+        // works because the ring is cosmetic.
+        $this->assertStringContainsString("if (!startTone('ringtone'))", $script);
+        $this->assertStringContainsString('showSoundNotice', $script);
+        $this->assertStringContainsString("ui.incomingSoundBtn.addEventListener('click'", $script);
     }
 
     public function test_the_deprecated_unload_listener_is_not_used(): void
@@ -145,13 +200,21 @@ class UserDialerPageTest extends TestCase
 
         // answer, reject, hangup, session-established and end-session.
         $this->assertGreaterThanOrEqual(4, substr_count($script, 'stopTone();'));
+        // Every terminal path also takes the incoming window down with it,
+        // including a caller who cancels before the answer.
+        $this->assertGreaterThanOrEqual(3, substr_count($script, 'closeIncomingDialog();'));
+        $this->assertStringContainsString('closeIncomingNotification();', $script);
     }
 
-    public function test_notifications_are_opt_in_with_an_in_page_fallback(): void
+    public function test_notifications_are_opt_in_and_background_only(): void
     {
         $script = file_get_contents(public_path('assets/vodnox/telephony.js'));
 
         $this->assertStringContainsString("permission !== 'granted'", $script);
         $this->assertStringContainsString('requestNotificationPermission', $script);
+        // Asked at most once per page load, and only raised while the tab is in
+        // the background so the in-page window is never duplicated on screen.
+        $this->assertStringContainsString('notificationAsked', $script);
+        $this->assertStringContainsString("document.visibilityState === 'visible'", $script);
     }
 }

@@ -33,9 +33,63 @@ html[data-theme=dark] .phone-message.error{background:#3e2837;color:#f1b2bd;bord
 .phone-dial:focus{border-color:#ceab70;box-shadow:0 0 0 3px #f7b95518}
 .phone-dial::placeholder{color:var(--rx-muted);font-size:9px;letter-spacing:0}
 
-.phone-incoming{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:15px 0 0;padding:14px;border:1px solid var(--rx-gold);border-radius:11px;background:var(--rx-soft)}
-.phone-incoming strong{font-size:13px;letter-spacing:1px;color:var(--rx-ink)}
-.phone-incoming .phone-row{margin:0}
+/*
+ * Incoming call window.
+ *
+ * An in-page <dialog> opened with showModal(), so it is centred by the browser,
+ * lives in the top layer (no ancestor overflow/transform can clip it) and keeps
+ * the keyboard focus inside. It never exceeds the viewport, on a phone as well
+ * as on a desktop.
+ */
+dialog.phone-incoming{
+  width:min(420px,calc(100vw - 24px));max-height:calc(100vh - 24px);
+  margin:auto;padding:0;overflow:auto;border:1px solid var(--rx-line);border-radius:20px;
+  background:var(--rx-card);color:var(--rx-ink);text-align:center;
+  box-shadow:0 30px 90px #101d3526;
+}
+dialog.phone-incoming::backdrop{background:#0d1932cc}
+.incoming-inner{padding:26px 24px 20px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.incoming-brand{margin:0 0 4px;font:8px Arial,sans-serif;letter-spacing:2.4px;color:#a17c40}
+.incoming-inner h2{margin:0;font-size:17px;font-weight:500;letter-spacing:-.2px;color:var(--rx-ink)}
+
+.incoming-orbit{position:relative;display:grid;place-items:center;width:96px;height:96px;margin:14px 0 6px}
+.incoming-orbit:before,.incoming-orbit:after{content:'';position:absolute;inset:0;border:1px solid #d9ad6240;border-radius:50%;animation:phone-orbit 2.4s ease-in-out infinite}
+.incoming-orbit:after{inset:8px;border-color:#d9ad6259;animation-delay:.35s}
+.incoming-avatar{display:grid;place-items:center;width:62px;height:62px;border-radius:50%;background:#101d35;color:#f7b955;font-size:19px;letter-spacing:1px}
+.incoming-avatar svg{width:26px;height:26px}
+
+.incoming-name{font-size:19px;font-weight:500;color:var(--rx-ink)}
+.incoming-extension{font:11px Arial,sans-serif;letter-spacing:1.4px;color:var(--rx-muted)}
+.incoming-state{display:flex;align-items:center;gap:7px;margin:8px 0 0;font-size:9px;letter-spacing:.6px;color:#a58148}
+.incoming-state:before{content:'';width:6px;height:6px;border-radius:50%;background:#d6a355;animation:phone-blink 1.5s infinite}
+
+.incoming-sound{margin:14px 0 0;padding:11px 13px;display:flex;flex-direction:column;align-items:center;gap:9px;font-size:9px;line-height:1.9;border:1px solid #f1debd;border-radius:11px;background:#fff5e5;color:#916628}
+.incoming-sound-btn{font-size:10px;padding:9px 14px}
+
+.incoming-actions{display:grid;grid-template-columns:1fr 1fr;gap:11px;width:100%;margin-top:16px}
+.incoming-actions svg{width:17px;height:17px}
+.incoming-actions .rx-btn{display:flex;align-items:center;justify-content:center;gap:9px;min-height:48px;padding:13px 12px;font-size:12px;font-weight:500}
+.incoming-actions .incoming-answer{background:#267b61;border-color:#267b61;color:#fff}
+.incoming-actions .incoming-answer:hover{background:#1f6a53;border-color:#1f6a53}
+.incoming-actions .incoming-reject{background:#b74755;border-color:#b74755;color:#fff}
+.incoming-actions .incoming-reject:hover{background:#a03b48;border-color:#a03b48}
+.incoming-reject-icon{transform:rotate(135deg)}
+.incoming-actions .rx-btn:focus-visible{outline:3px solid #d9a956;outline-offset:3px}
+
+.incoming-scope{margin:14px 0 0;font-size:8px;line-height:1.9;color:var(--rx-muted)}
+
+html[data-theme=dark] dialog.phone-incoming{background:#132238;border-color:#293950;color:#e8eef8}
+html[data-theme=dark] .incoming-inner h2,html[data-theme=dark] .incoming-name{color:#e8eef8}
+html[data-theme=dark] .incoming-avatar{background:#f7b955;color:#101d35}
+html[data-theme=dark] .incoming-state{color:#f0ce93}
+html[data-theme=dark] .incoming-sound{background:#3a2e21;border-color:#594a33;color:#f0ce93}
+html[data-theme=dark] .incoming-actions .incoming-answer{background:#89d9b4;border-color:#89d9b4;color:#0b1424}
+html[data-theme=dark] .incoming-actions .incoming-answer:hover{background:#a2e5c8;border-color:#a2e5c8}
+html[data-theme=dark] .incoming-actions .incoming-reject{background:#f1a8b3;border-color:#f1a8b3;color:#0b1424}
+html[data-theme=dark] .incoming-actions .incoming-reject:hover{background:#f6bcc5;border-color:#f6bcc5}
+
+@keyframes phone-orbit{50%{transform:scale(1.08);opacity:.45}}
+@keyframes phone-blink{50%{opacity:.25}}
 
 .phone-controls{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:15px;padding-top:15px;border-top:1px solid var(--rx-line)}
 .phone-timer{font:300 24px/1.2 Arial,sans-serif;letter-spacing:2px;color:#a58148;min-width:74px}
@@ -53,8 +107,12 @@ html[data-theme=dark] .phone-timer{color:#f0ce93}
 @media(max-width:520px){
   .phone-row .rx-btn{flex:1}
   .phone-dial{flex-basis:100%}
-  .phone-incoming{align-items:stretch}
-  .phone-incoming .phone-row{width:100%}
+  dialog.phone-incoming{width:calc(100vw - 20px)}
+  .incoming-inner{padding:22px 18px 18px}
+  .incoming-actions{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){
+  .incoming-orbit:before,.incoming-orbit:after,.incoming-state:before{animation:none}
 }
 
 /*

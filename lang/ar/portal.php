@@ -448,5 +448,12 @@ return [
         'telephony_no_answer' => 'لا يوجد رد.',
         'telephony_network_lost' => 'انقطع الاتصال بخادم الاتصالات. جارٍ إعادة الاتصال…',
         'telephony_sip_missing' => 'تعذّر تحميل مكتبة الاتصال في المتصفح. حدّث الصفحة؛ وإذا استمرت المشكلة فأبلغ الدعم الفني.',
+        'telephony_incoming_answer' => 'إجابة',
+        'telephony_incoming_reject' => 'رفض',
+        'telephony_incoming_ringing' => 'يرن الآن…',
+        'telephony_incoming_missed' => 'مكالمة فائتة',
+        'telephony_incoming_sound_blocked' => 'منع المتصفح نغمة الرنين. فعّل الصوت لسماعها؛ ويمكنك الإجابة في كل الأحوال.',
+        'telephony_incoming_sound_enable' => 'تفعيل الصوت',
+        'telephony_incoming_scope' => 'تظهر المكالمات الواردة أثناء فتح هذه الصفحة فقط، ولا تصل إليك بعد إغلاقها.',
     ],
 ];
