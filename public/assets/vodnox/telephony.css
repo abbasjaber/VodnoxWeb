@@ -95,6 +95,46 @@ html[data-theme=dark] .incoming-actions .incoming-reject:hover{background:#f6bcc
 .phone-timer{font:300 24px/1.2 Arial,sans-serif;letter-spacing:2px;color:#a58148;min-width:74px}
 html[data-theme=dark] .phone-timer{color:#f0ce93}
 
+/*
+ * Call controls (mute / hang up).
+ *
+ * The base look and the two stateful buttons are declared here, scoped to the
+ * phone card, so they are correct on every page that renders the card — some of
+ * them (the dialer) do not load the workspace stylesheet that used to carry the
+ * only `.rx-btn` rules. State is never colour-only: the label and the icon
+ * change with `aria-pressed` too.
+ */
+.phone-card .phone-controls .rx-btn{
+  border:1px solid var(--rx-line);background:var(--rx-card);color:var(--rx-ink);
+  padding:11px 15px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;
+  gap:8px;font-size:10px;line-height:1.6;transition:.15s;text-decoration:none;cursor:pointer;
+}
+.phone-card .phone-controls .rx-btn svg{width:15px;height:15px;flex-shrink:0}
+.phone-card .phone-controls .rx-btn:disabled{opacity:.45;cursor:not-allowed}
+.phone-card .phone-controls .rx-btn:focus-visible{outline:3px solid #d9a956;outline-offset:3px}
+
+/* Mute: gold when the microphone is open, dark bronze with a gold ring when
+   it is muted — plus the slashed microphone and the "unmute" wording. */
+#phoneMuteBtn{background:#f7b955;border-color:#e0a63f;color:#3a2a06}
+#phoneMuteBtn:hover:not(:disabled){background:#ffca73;border-color:#cf9a34}
+#phoneMuteBtn[aria-pressed=true]{background:#8a5a12;border-color:#5f3d06;color:#fff;box-shadow:0 0 0 3px #f7b95559}
+#phoneMuteBtn[aria-pressed=true]:hover:not(:disabled){background:#75490d;border-color:#4d3004}
+#phoneMuteBtn .mute-icon-off{display:none}
+#phoneMuteBtn[aria-pressed=true] .mute-icon-on{display:none}
+#phoneMuteBtn[aria-pressed=true] .mute-icon-off{display:inline-block}
+
+/* Hang up: unmistakable red with white text and icon. */
+#phoneHangupBtn{background:#c62828;border-color:#b71c1c;color:#fff}
+#phoneHangupBtn:hover:not(:disabled){background:#b71c1c;border-color:#8e1616}
+#phoneHangupBtn .hangup-icon{transform:rotate(135deg)}
+
+html[data-theme=dark] #phoneMuteBtn{background:#f0c063;border-color:#e0a63f;color:#2b1f05}
+html[data-theme=dark] #phoneMuteBtn:hover:not(:disabled){background:#f7cf85;border-color:#cf9a34}
+html[data-theme=dark] #phoneMuteBtn[aria-pressed=true]{background:#6b4708;border-color:#f0c063;color:#ffe6b0;box-shadow:0 0 0 3px #f0c06333}
+html[data-theme=dark] #phoneMuteBtn[aria-pressed=true]:hover:not(:disabled){background:#573903;border-color:#f0c063}
+html[data-theme=dark] #phoneHangupBtn{background:#d94a4a;border-color:#e56a6a;color:#fff}
+html[data-theme=dark] #phoneHangupBtn:hover:not(:disabled){background:#c13b3b;border-color:#e56a6a}
+
 .phone-directory{margin-top:18px;padding-top:16px;border-top:1px solid var(--rx-line)}
 .phone-directory h3{font-size:10px;font-weight:500;color:var(--rx-ink);margin:0 0 12px}
 .phone-directory ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
@@ -106,6 +146,7 @@ html[data-theme=dark] .phone-timer{color:#f0ce93}
 
 @media(max-width:520px){
   .phone-row .rx-btn{flex:1}
+  .phone-controls .rx-btn{flex:1;min-width:108px}
   .phone-dial{flex-basis:100%}
   dialog.phone-incoming{width:calc(100vw - 20px)}
   .incoming-inner{padding:22px 18px 18px}

@@ -45,6 +45,15 @@ jobs:
       - name: Build browser telephony bundle
         run: npm run build:telephony
 
+      # Behavioural test for the browser phone's microphone mute. It loads the
+      # real public/assets/vodnox/telephony.js into a stubbed browser and drives
+      # a call end to end: mute silences the live outgoing track, a SIP.js track
+      # swap does not resurrect it, unmute restores it, and hanging up resets the
+      # state. It also replays the same call with the fix removed and asserts the
+      # bug comes back. Grepping the script for strings would prove none of this.
+      - name: Browser phone mute tests
+        run: node tests/js/telephony-mute.probe.mjs
+
       # Behavioural tests for the Certbot deploy hook. They run entirely inside
       # a temp fixture with a stub PATH: no root, no writes to the runner's
       # system directories, no network. `bash -n` alone is not enough here —

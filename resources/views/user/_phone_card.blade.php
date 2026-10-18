@@ -78,6 +78,9 @@
         'soundBlocked' => __('portal.agent.telephony_incoming_sound_blocked'),
         'soundEnable' => __('portal.agent.telephony_incoming_sound_enable'),
         'incomingScope' => __('portal.agent.telephony_incoming_scope'),
+        'mute' => __('portal.agent.telephony_mute'),
+        'unmute' => __('portal.agent.telephony_unmute'),
+        'muteIdle' => __('portal.agent.telephony_mute_idle'),
     ];
 @endphp
 
@@ -108,10 +111,23 @@
 
         <div class="phone-controls" id="phoneCallControls" hidden>
             <span class="phone-timer" id="phoneTimer" dir="ltr">00:00</span>
-            <button type="button" class="rx-btn" id="phoneMuteBtn" aria-pressed="false">{{ __('portal.agent.telephony_mute') }}</button>
+            {{--
+                Mute. The text and the icon both change with the state (never the
+                colour alone) and the button is disabled until the call actually
+                has outgoing audio to silence — telephony.js owns that state.
+            --}}
+            <button type="button" class="rx-btn phone-mute" id="phoneMuteBtn"
+                    data-phone-mute aria-pressed="false" disabled>
+                <svg class="mute-icon mute-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4"/><path d="M8 23h8"/></svg>
+                <svg class="mute-icon mute-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M1 1l22 22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><path d="M12 19v4"/><path d="M8 23h8"/></svg>
+                <span data-mute-label>{{ __('portal.agent.telephony_mute') }}</span>
+            </button>
             <button type="button" class="rx-btn" id="phoneHoldBtn" disabled>{{ __('portal.agent.telephony_hold') }}</button>
             <button type="button" class="rx-btn" id="phoneTransferBtn" disabled>{{ __('portal.agent.telephony_transfer') }}</button>
-            <button type="button" class="rx-btn danger" id="phoneHangupBtn">{{ __('portal.agent.telephony_hangup') }}</button>
+            <button type="button" class="rx-btn danger phone-hangup" id="phoneHangupBtn">
+                <svg class="hangup-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m7 3 3 5-3 3a15 15 0 0 0 6 6l3-3 5 3-1 4C10 22 2 14 3 4l4-1Z"/></svg>
+                <span>{{ __('portal.agent.telephony_hangup') }}</span>
+            </button>
         </div>
 
         <div class="phone-directory">

@@ -68,6 +68,12 @@
     var notificationAsked = false;
     var answering = false;
     var callerLabel = '';
+    // Microphone mute is real state, never read back from the DOM: the button
+    // can be duplicated and the DOM can be re-rendered, the call state cannot.
+    var muted = false;
+    // The MediaStream whose add/remove-track events we already watch, so the
+    // mute state is re-asserted when SIP.js swaps the microphone track.
+    var watchedStream = null;
 
     var ui = {
         dock: document.getElementById('vodnoxPhoneDock'),
@@ -84,7 +90,6 @@
         incomingSound: document.getElementById('phoneIncomingSound'),
         incomingSoundBtn: document.getElementById('phoneIncomingSoundBtn'),
         timer: document.getElementById('phoneTimer'),
-        mute: document.getElementById('phoneMuteBtn'),
         hangup: document.getElementById('phoneHangupBtn'),
         answer: document.getElementById('phoneAnswerBtn'),
         reject: document.getElementById('phoneRejectBtn'),
@@ -1133,6 +1138,12 @@
                     stopTone();
                     closeIncomingNotification();
                     attachRemoteAudio(target);
+                    // The audio senders only exist once the media has been
+                    // negotiated, so this is the first moment the mute control
+                    // can do anything. A new call always starts unmuted.
+                    muted = false;
+                    watchLocalStream(target.sessionDescriptionHandler);
+                    applyMute();
                     startTimer();
                     setMessage(strings.inCall || 'In call', 'ok');
                     break;
@@ -1193,11 +1204,13 @@
         terminalReason = null;
         answering = false;
         callerLabel = '';
+        // The mute state belongs to the call that just ended: the next call
+        // starts unmuted and the button returns to a disabled, neutral state.
+        muted = false;
+        watchedStream = null;
+        reflectMute(false);
         stopTimer();
         showControls(false);
-        if (ui.mute) {
-            ui.mute.setAttribute('aria-pressed', 'false');
-        }
         if (ui.audio) {
             ui.audio.srcObject = null;
             ui.audio.hidden = true;
@@ -1207,21 +1220,120 @@
         }
     }
 
-    function toggleMute() {
-        if (!session || !session.sessionDescriptionHandler) {
-            return;
+    // ---------------------------------------------------------------------
+    // Microphone mute
+    //
+    // The microphone is silenced by disabling the live outgoing audio tracks
+    // themselves (`MediaStreamTrack.enabled = false`). That is the only place
+    // that matters: the SDP direction is untouched, so the *incoming* audio and
+    // the loudspeaker keep working — the agent still hears the other side while
+    // the other side hears nothing. `track.stop()` is deliberately NOT used:
+    // it is irreversible, so unmuting would ask for the microphone again (and
+    // would be refused outside a user gesture).
+    //
+    // Every mute control is looked up by attribute rather than by a single
+    // element id, and the pressed state is written to all of them, so a
+    // duplicated control can never disagree with the live call.
+    // ---------------------------------------------------------------------
+
+    function muteButtons() {
+        return Array.prototype.slice.call(document.querySelectorAll('[data-phone-mute]'));
+    }
+
+    /**
+     * The audio tracks actually being sent on the current session, or an empty
+     * list when there is no call, no session description handler, a closed peer
+     * connection — or when the handler belongs to a session that has already
+     * been replaced. The last check is what stops the button from ever acting
+     * on a stale call.
+     */
+    function audioSendTracks(target) {
+        if (!target || target !== session || !target.sessionDescriptionHandler) {
+            return [];
         }
-        var pc = session.sessionDescriptionHandler.peerConnection;
-        if (!pc) {
-            return;
+        var pc = target.sessionDescriptionHandler.peerConnection;
+        if (!pc || typeof pc.getSenders !== 'function') {
+            return [];
         }
-        var muted = ui.mute.getAttribute('aria-pressed') === 'true';
+        var tracks = [];
         pc.getSenders().forEach(function (sender) {
-            if (sender.track && sender.track.kind === 'audio') {
-                sender.track.enabled = muted;
+            if (sender && sender.track && sender.track.kind === 'audio') {
+                tracks.push(sender.track);
             }
         });
-        ui.mute.setAttribute('aria-pressed', muted ? 'false' : 'true');
+
+        return tracks;
+    }
+
+    /**
+     * Push the current mute state onto the live senders and onto every visible
+     * control. Safe to call at any time: with no usable senders it only
+     * disables the controls.
+     */
+    function applyMute() {
+        var tracks = audioSendTracks(session);
+        tracks.forEach(function (track) {
+            track.enabled = !muted;
+        });
+        reflectMute(tracks.length > 0);
+
+        return tracks.length;
+    }
+
+    function reflectMute(available) {
+        muteButtons().forEach(function (button) {
+            button.setAttribute('aria-pressed', muted ? 'true' : 'false');
+            button.disabled = !available;
+            button.title = !available
+                ? (strings.muteIdle || 'No active call')
+                : (muted ? (strings.unmute || 'Unmute microphone') : (strings.mute || 'Mute microphone'));
+            var label = button.querySelector('[data-mute-label]');
+            if (label) {
+                label.textContent = muted
+                    ? (strings.unmute || 'Unmute microphone')
+                    : (strings.mute || 'Mute microphone');
+            }
+        });
+    }
+
+    /**
+     * SIP.js rebuilds the sender when the microphone track is replaced
+     * (`setLocalMediaStream()` stops the old track and adds a fresh one with
+     * `enabled = true`). Without this hook a mute applied before that swap
+     * would silently disappear mid-call.
+     */
+    function watchLocalStream(handler) {
+        var stream = handler && handler.localMediaStream;
+        if (!stream || typeof stream.addEventListener !== 'function' || stream === watchedStream) {
+            return;
+        }
+        watchedStream = stream;
+        ['addtrack', 'removetrack'].forEach(function (name) {
+            stream.addEventListener(name, function () {
+                applyMute();
+            });
+        });
+    }
+
+    function toggleMute() {
+        // Read the live session, not a captured one: a click that arrives after
+        // a call ended (or after a new call started) must act on that call.
+        if (!session) {
+            reflectMute(false);
+            return;
+        }
+        var tracks = audioSendTracks(session);
+        if (!tracks.length) {
+            // Nothing to silence yet — keep the button disabled and honest
+            // instead of flipping a state that has no effect.
+            reflectMute(false);
+            return;
+        }
+        muted = !muted;
+        tracks.forEach(function (track) {
+            track.enabled = !muted;
+        });
+        reflectMute(true);
     }
 
     // ---------------------------------------------------------------------
@@ -1293,9 +1405,17 @@
     if (ui.hangup) {
         ui.hangup.addEventListener('click', hangup);
     }
-    if (ui.mute) {
-        ui.mute.addEventListener('click', toggleMute);
-    }
+    // One listener per control, marked on the element so a second pass over the
+    // same markup (or a second script tag) can never stack handlers on it.
+    muteButtons().forEach(function (button) {
+        if (button.dataset.muteBound === 'true') {
+            return;
+        }
+        button.dataset.muteBound = 'true';
+        button.addEventListener('click', toggleMute);
+    });
+    // No call and no senders yet: the control starts disabled and neutral.
+    reflectMute(false);
     // Hold and transfer are not part of this phase: they are shown disabled
     // rather than pretending to work.
     [ui.hold, ui.transfer].forEach(function (button) {

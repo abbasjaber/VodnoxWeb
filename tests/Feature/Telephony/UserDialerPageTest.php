@@ -46,6 +46,44 @@ class UserDialerPageTest extends TestCase
         $response->assertSee('id="phoneHangupBtn"', false);
     }
 
+    /**
+     * The markup contract telephony.js depends on for the microphone mute.
+     *
+     * The behaviour itself is proven by tests/js/telephony-mute.probe.mjs,
+     * which drives a real call against the real script. What is locked in here
+     * is only the markup that script and its test both key off: the attribute
+     * hook that makes every (possibly duplicated) control discoverable, the
+     * label element it rewrites, both microphone icons so the state is never
+     * colour-only, and the disabled start when there is no call to silence.
+     */
+    public function test_the_mute_control_exposes_the_hooks_the_phone_script_drives(): void
+    {
+        $response = $this->actingAs($this->agent)->get(route('user.index'))->assertOk();
+
+        $response->assertSee('id="phoneMuteBtn"', false);
+        $response->assertSee('data-phone-mute aria-pressed="false" disabled', false);
+        $response->assertSee('data-mute-label', false);
+        // Both icons ship so the label, the icon and the colour all move
+        // together with the state.
+        $response->assertSee('mute-icon-on', false);
+        $response->assertSee('mute-icon-off', false);
+        // Ending the call stays a real, labelled red button rather than a
+        // colour-only square.
+        $response->assertSee('class="rx-btn danger phone-hangup"', false);
+        $response->assertSee('hangup-icon', false);
+    }
+
+    public function test_the_mute_control_is_translated_in_both_languages(): void
+    {
+        $this->assertSame('كتم الميكروفون', __('portal.agent.telephony_mute', [], 'ar'));
+        $this->assertSame('إلغاء الكتم', __('portal.agent.telephony_unmute', [], 'ar'));
+        $this->assertSame('لا توجد مكالمة جارية', __('portal.agent.telephony_mute_idle', [], 'ar'));
+
+        $this->assertSame('Mute microphone', __('portal.agent.telephony_mute', [], 'en'));
+        $this->assertSame('Unmute microphone', __('portal.agent.telephony_unmute', [], 'en'));
+        $this->assertSame('No active call', __('portal.agent.telephony_mute_idle', [], 'en'));
+    }
+
     public function test_the_dialer_loads_the_sip_stack_and_its_own_script(): void
     {
         $response = $this->actingAs($this->agent)->get(route('user.index'))->assertOk();
