@@ -41,6 +41,7 @@ FILES=(
     asterisk/rtp.conf.snippet
 
     certbot/vodnox-telephony-deploy-hook.sh
+    tests/certbot-deploy-hook.test.sh
 
     nginx/vodnox-allow.conf.example
     nginx/vodnox-provisioning.conf

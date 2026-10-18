@@ -45,6 +45,18 @@ jobs:
       - name: Build browser telephony bundle
         run: npm run build:telephony
 
+      # Behavioural tests for the Certbot deploy hook. They run entirely inside
+      # a temp fixture with a stub PATH: no root, no writes to the runner's
+      # system directories, no network. `bash -n` alone is not enough here —
+      # the guarantees under test are about modes, exit codes and rollback.
+      - name: Telephony deploy-hook tests
+        run: bash deploy/telephony/tests/certbot-deploy-hook.test.sh
+
+      # Build the telephony release archive and fail if it would ship anything
+      # secret-looking.
+      - name: Build telephony release package
+        run: deploy/telephony/bin/package.sh
+
       # ✅ Step 6: Deploy to cPanel via FTP 
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
