@@ -22,6 +22,7 @@
         : false;
     $addons = [
         ['communications', 'vodnox.communications', 'phone', route('company.communications.index')],
+        ['gateways', 'vodnox.gateways', 'integrations', route('company.gateways.index')],
         ['crm', 'vodnox.crm', 'plans', route('company.crm.index')],
         ['forms', 'VODNOX FORMS', 'plans', route('company.forms.index')],
     ];

@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AuditController as AdminAudit;
 use App\Http\Controllers\Admin\BillingController as AdminBilling;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
 use App\Http\Controllers\Admin\FeatureSubscriptionController as AdminFeatureSubscription;
+use App\Http\Controllers\Admin\GatewayController as AdminGateway;
 use App\Http\Controllers\Admin\IntegrationController as AdminIntegration;
 use App\Http\Controllers\Admin\OrganizationController as AdminOrganization;
 use App\Http\Controllers\Admin\PlanController as AdminPlan;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Company\DepartmentController as CompanyDepartment;
 use App\Http\Controllers\Company\ExtensionController as CompanyExtension;
 use App\Http\Controllers\Company\FormController as CompanyForm;
 use App\Http\Controllers\Company\FormSubmissionController as CompanyFormSubmission;
+use App\Http\Controllers\Company\GatewayController as CompanyGateway;
 use App\Http\Controllers\Company\IvrController as CompanyIvr;
 use App\Http\Controllers\Company\NumberController as CompanyNumber;
 use App\Http\Controllers\Company\OpportunityController as CompanyOpportunity;
@@ -135,6 +137,10 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
     Route::delete('servers/{server}', [AdminServer::class, 'destroy'])->name('servers.destroy');
     Route::post('servers/{server}/test', [AdminServer::class, 'test'])->name('servers.test');
 
+    // GSM gateways (read-only cross-organization surveillance)
+    Route::get('gateways', [AdminGateway::class, 'index'])->name('gateways.index');
+    Route::post('gateways/{gateway}/refresh', [AdminGateway::class, 'refresh'])->name('gateways.refresh');
+
     // Integrations
     Route::get('integrations', [AdminIntegration::class, 'index'])->name('integrations.index');
     Route::post('integrations', [AdminIntegration::class, 'store'])->name('integrations.store');
@@ -237,6 +243,24 @@ Route::middleware(['auth', 'tenant', 'role:organization_admin,supervisor'])->pre
     Route::put('communications/{schedule}', [CompanyCommunications::class, 'update'])->name('communications.update');
     Route::delete('communications/{schedule}', [CompanyCommunications::class, 'destroy'])->name('communications.destroy');
     Route::post('communications/{schedule}/test', [CompanyCommunications::class, 'test'])->name('communications.test');
+
+    /*
+    | GSM gateways (GoIP lines).
+    | Visible to the organization administrator and the supervisor, but each
+    | action is gated by its own permission *inside* the controller: a
+    | supervisor may look, never manage, and can never read a SIP secret just
+    | by being inside this route group.
+    */
+    Route::get('gateways', [CompanyGateway::class, 'index'])->name('gateways.index');
+    Route::post('gateways', [CompanyGateway::class, 'store'])->name('gateways.store');
+    Route::put('gateways/{gateway}', [CompanyGateway::class, 'update'])->name('gateways.update');
+    Route::delete('gateways/{gateway}', [CompanyGateway::class, 'destroy'])->name('gateways.destroy');
+    Route::post('gateways/{gateway}/retry', [CompanyGateway::class, 'retry'])->name('gateways.retry');
+    Route::post('gateways/{gateway}/refresh', [CompanyGateway::class, 'refresh'])->name('gateways.refresh');
+    Route::post('gateways/{gateway}/toggle', [CompanyGateway::class, 'toggle'])->name('gateways.toggle');
+    Route::put('gateways/{gateway}/lines/{line}', [CompanyGateway::class, 'updateLine'])->name('gateways.lines.update');
+    Route::post('gateways/{gateway}/lines/{line}/rotate', [CompanyGateway::class, 'rotate'])->name('gateways.lines.rotate');
+    Route::get('gateways/{gateway}/lines/{line}/secret', [CompanyGateway::class, 'secret'])->name('gateways.lines.secret');
 
     /*
     | CRM (independent subscription)

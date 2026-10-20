@@ -86,19 +86,22 @@ echo "==> 3/11 snapshotting the current configuration"
 "${SRC}/bin/backup.sh" pre-install
 
 echo "==> 4/11 installing the provisioning agent"
-install -d -m 0750 "${APP_DIR}"
-cp -a "${SRC}"/provisioning/public "${APP_DIR}/"
-cp -a "${SRC}"/provisioning/src "${APP_DIR}/"
+install -d -m 0750 "${APP_DIR}" "${APP_DIR}/public" "${APP_DIR}/src"
+# Copy the directory *contents* (trailing "/."). `cp -a src dest/` would nest a
+# second "src/src" on a re-run, leaving the running agent on the old version
+# while the operator believes the update landed.
+cp -a "${SRC}"/provisioning/public/. "${APP_DIR}/public/"
+cp -a "${SRC}"/provisioning/src/. "${APP_DIR}/src/"
 if [ ! -f "${APP_DIR}/config.php" ]; then
     install -m 0640 -o asterisk -g asterisk "${SRC}/provisioning/config.example.php" "${APP_DIR}/config.php"
     echo "    -> edit ${APP_DIR}/config.php and set the token and signing secret"
 fi
 
 echo "==> 5/11 installing the call-event forwarder"
-install -d -m 0750 "${EVENTS_APP_DIR}"
+install -d -m 0750 "${EVENTS_APP_DIR}" "${EVENTS_APP_DIR}/src"
 install -m 0644 "${SRC}/events/bootstrap.php" "${EVENTS_APP_DIR}/bootstrap.php"
 install -m 0644 "${SRC}/events/bin/run.php" "${EVENTS_APP_DIR}/run.php"
-cp -a "${SRC}/events/src" "${EVENTS_APP_DIR}/"
+cp -a "${SRC}/events/src/." "${EVENTS_APP_DIR}/src/"
 install -d -m 0750 -o asterisk -g asterisk "${EVENTS_CONF_DIR}"
 if [ ! -f "${EVENTS_CONF_DIR}/config.php" ]; then
     install -m 0640 -o root -g asterisk "${SRC}/events/config.example.php" "${EVENTS_CONF_DIR}/config.php"

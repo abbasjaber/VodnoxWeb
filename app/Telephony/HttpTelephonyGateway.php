@@ -60,6 +60,38 @@ class HttpTelephonyGateway implements TelephonyGateway
         return $this->post('/queues', $payload);
     }
 
+    public function provisionGatewayLine(array $payload): array
+    {
+        return $this->post('/gateway-lines', $payload);
+    }
+
+    public function deprovisionGatewayLine(array $payload): array
+    {
+        return $this->delete('/gateway-lines/'.$this->identifier($payload));
+    }
+
+    public function gatewayStatus(array $payload): array
+    {
+        return $this->post('/gateway-status', $payload);
+    }
+
+    public function capabilities(): array
+    {
+        try {
+            $body = $this->get('/capabilities');
+
+            return [
+                'agent_version' => isset($body['agent_version']) ? (string) $body['agent_version'] : null,
+                'capabilities' => is_array($body['capabilities'] ?? null) ? array_values($body['capabilities']) : [],
+            ];
+        } catch (\Throwable) {
+            // An agent that predates capability negotiation (404), rejects the
+            // call or is unreachable is reported as "no capabilities" — never
+            // as support for a feature it does not have.
+            return ['agent_version' => null, 'capabilities' => []];
+        }
+    }
+
     public function testConnection(): array
     {
         try {
@@ -97,6 +129,21 @@ class HttpTelephonyGateway implements TelephonyGateway
             ])
             ->withBody($body, 'application/json')
             ->post($path);
+
+        $response->throw();
+
+        return $response->json() ?? [];
+    }
+
+    /**
+     * A signed read-only GET (the agent authenticates every route, including
+     * reads, over an empty body).
+     *
+     * @return array<string, mixed>
+     */
+    private function get(string $path): array
+    {
+        $response = $this->signed('')->get($path);
 
         $response->throw();
 

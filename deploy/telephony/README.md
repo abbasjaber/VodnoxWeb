@@ -16,7 +16,7 @@ Smart IVR) ولا تظهر إعدادات المؤسسة أو الاشتراكا
 
 | المسار | الوظيفة |
 | --- | --- |
-| `provisioning/src/Agent.php` | خدمة التزويد (PHP 8.2 بلا تبعيات): تتحقق من التوقيع، تمنع التكرار (nonce + idempotency + flock)، وتكتب إعدادات Asterisk ذرّياً. |
+| `provisioning/src/Agent.php` | خدمة التزويد (PHP 8.2 بلا تبعيات): تتحقق من التوقيع، تمنع التكرار (nonce + idempotency + flock)، وتكتب إعدادات Asterisk ذرّياً. تُصدر كذلك `/capabilities` و`/gateway-lines` و`/gateway-status`، والإصدار الحالي **`1.2.0`**. |
 | `provisioning/public/index.php` | نقطة الدخول الوحيدة للخدمة؛ ترفض أي طلب بلا توقيع صحيح. |
 | `provisioning/config.example.php` | قالب الإعدادات؛ يُنسخ إلى `config.php` ويحمل السرّين فقط. |
 | `events/src/*.php` | **مُرسل أحداث المكالمات**: يقرأ AMI على loopback، يحوّل الأحداث إلى مفردات VODNOX، يخزّنها على القرص، ويرسلها موقّعة إلى webhook التطبيق. |
@@ -42,12 +42,21 @@ Smart IVR) ولا تظهر إعدادات المؤسسة أو الاشتراكا
 
 **ما يكتبه الوكيل على السيرفر (المولّد آلياً):**
 
-- `/etc/asterisk/vodnox/generated/<sip_username>.conf` — `aor` + `auth` + `endpoint`
-  للـ WebRTC (`webrtc=yes`, `media_encryption=dtls`, `dtls_auto_generate_cert=yes`,
-  `ice_support=yes`, `rtcp_mux=yes`, `bundle=yes`, `direct_media=no`,
-  `force_rport=yes`, `rewrite_contact=yes`, `rtp_symmetric=yes`).
-- `/etc/asterisk/vodnox/dialplan/<context>.conf` — سياق معزول لكل مؤسسة.
-- `/var/lib/vodnox-telephony/state/` — سجلات idempotency وnonces وحالة المؤسسات/الأرقام.
+- `/etc/asterisk/vodnox/generated/extension_<sip_username>.conf` — `aor` + `auth` +
+  `endpoint` للـ WebRTC (`webrtc=yes`, `media_encryption=dtls`,
+  `dtls_auto_generate_cert=yes`, `ice_support=yes`, `rtcp_mux=yes`, `bundle=yes`,
+  `direct_media=no`, `force_rport=yes`, `rewrite_contact=yes`, `rtp_symmetric=yes`).
+- `/etc/asterisk/vodnox/generated/gateway_<sip_username>.conf` — `aor` + `auth` +
+  `endpoint` **SIP/UDP تقليدي** لخط بوابة GSM/GoIP: `transport=transport-udp`،
+  `ulaw,alaw`، `direct_media=no`، `rtp_symmetric=yes`، `force_rport=yes`،
+  `rewrite_contact=yes`، `dtmf_mode=rfc4733`، `max_contacts=1`، وبلا `webrtc`
+  وبلا DTLS. **لا يُنشأ transport جديد**: يُستخدم `5060/udp` المهيّأ مسبقاً.
+- `/etc/asterisk/vodnox/dialplan/dialplan_<context>.conf` — سياق معزول لكل مؤسسة.
+- `/etc/asterisk/vodnox/dialplan/gateway_<context>.conf` — سياق **وارد** مخصّص لكل
+  خط بوابة (`vodnox_gw_<org>_<line>`)؛ يوجّه إلى التحويلة صاحبة الوجهة فقط ويرفض
+  أي رقم آخر، ولا يوجد catch-all يعبر إلى سياق ثانٍ.
+- `/var/lib/vodnox-telephony/state/` — سجلات idempotency وnonces وحالة المؤسسات/الأرقام،
+  وحالة خطوط البوابة في `state/gateways.json`.
 
 **لا يُعاد تشغيل Asterisk عند إنشاء موظف.** يُنفَّذ `pjsip reload` و`dialplan reload`
 فقط (و`core reload` عند تغيير قالب HTTP — لا وجود للأمر `http reload` في Asterisk 22).
@@ -106,7 +115,14 @@ Smart IVR) ولا تظهر إعدادات المؤسسة أو الاشتراكا
 | `DELETE` | `/organizations/{context}` | حذف سياق مؤسسة وكل حساباتها |
 | `POST` | `/extensions` | إنشاء/تحديث Endpoint/Auth/AOR + سطر في الـ dialplan |
 | `DELETE` | `/extensions/{sip_username}` | إزالة حساب SIP |
+| `GET` | `/capabilities` | إصدار الوكيل + قدراته المدعومة (negotiation؛ التطبيق لا يدّعي مزامنة غير موجودة) |
+| `POST` | `/gateway-lines` | إنشاء/تحديث خط بوابة GSM: Endpoint/Auth/AOR بـSIP/UDP + سياق وارد مخصّص |
+| `DELETE` | `/gateway-lines/{sip_username}` | إزالة خط البوابة وحسابه وسياقه الوارد |
+| `POST` | `/gateway-status` | قراءة حالة تسجيل خطوط البوابة من `pjsip show contacts` (حدّ أقصى 50 خطاً) |
 | `*` | `/ivr-menus`, `/queues` | **501** — خارج النطاق حالياً |
+
+**ملكية خط البوابة تُحسم دائماً من الحالة المحفوظة على السيرفر:** أي `gateway-lines`
+لخط مسجّل لمؤسسة أخرى يُرفض بـ403، ولا يُقبل `organization_id` من أي حمولة.
 
 **العزل:** يُشتق الـ endpoint دائماً من قاعدة بيانات VODNOX
 (`extensions.sip_username`) لا من أي ترويسة أو `caller_id` أو `organization_id`
@@ -163,6 +179,79 @@ sudo asterisk -rx 'core reload'      # يقرأ http.conf (الشهادة/WSS) �
 `install.sh` يلتقط نسخة احتياطية قبل أي تعديل، وينشئ المجلدات القابلة للكتابة،
 ويثبّت nginx/php-fpm/systemd، ويشغّل الخدمة. إعادة تشغيله آمنة ولا تلمس
 الإعدادات المولّدة.
+
+---
+
+## 5.1 تحديث وكيل التزويد إلى `1.2.0` (دعم بوابات GSM/GoIP)
+
+**هذه أهم خطوة يبقى على المشغّل تنفيذها.** الوكيل المركَّب حالياً على السيرفر
+(`38.3.184.246`) هو إصدار ما قبل البوابات: لا يملك `/capabilities` ولا
+`/gateway-lines` ولا `/gateway-status`. لذلك تظهر في واجهة «بوابات الاتصال» رسالة
+«خدمة الربط على الخادم لا تدعم خطوط البوابة بعد»، ولا يُعرض أي خط كـ«مُزامَن» —
+وهذا **سلوك صادق لا خطأ**، ومقصود: لا يُعلَن نجاح مزامنة لم تحدث.
+
+**ما الجديد في `1.2.0`:** `GET /capabilities`، `POST/DELETE /gateway-lines`،
+`POST /gateway-status`، وملفا `gateway_*.conf` (endpoint بـSIP/UDP + سياق وارد
+مخصّص لكل خط). **لا تغيير** على عقد الموظفين القائم (`/organizations`,
+`/extensions`) ولا على `config.php`؛ لذلك **لا تُلمس الأسرار ولا `config.php` ولا
+الحالة ولا الملفات المولّدة**.
+
+**الحزمة تأتي من CI:** كل تشغيل ناجح على `main` يرفع artifact باسم
+`vodnox-telephony-agent` يحوي `vodnox-telephony-<UTC>.tar.gz` و
+`vodnox-telephony-<UTC>.tar.gz.sha256` (وبصمة SHA-256 مطبوعة في سجل التشغيل مع
+`agent version : 1.2.0`).
+
+```bash
+# 0) نزّل الحزمة: GitHub → Actions → آخر تشغيل ناجح على main → Artifacts.
+
+# 1) على سيرفر الوسائط: تحقّق من البصمة أولاً، ثم فكّ ثم ثبّت الملفات فقط.
+sha256sum -c vodnox-telephony-<UTC>.tar.gz.sha256
+sudo tar -xzf vodnox-telephony-<UTC>.tar.gz -C /tmp/vodnox-agent-<UTC>
+
+#    نسخة احتياطية واحدة قبل الاستبدال (تشمل /etc/asterisk والحالة معاً):
+sudo deploy/telephony/bin/backup.sh pre-agent-update
+
+sudo cp -a /tmp/vodnox-agent-<UTC>/provisioning/src/. /opt/vodnox-telephony/src/
+sudo chown -R root:asterisk /opt/vodnox-telephony/src
+
+#    تحقّق أن الملف المستقرّ فعلاً هو الإصدار الجديد:
+grep -m1 "const VERSION" /opt/vodnox-telephony/src/Agent.php
+#    المتوقّع: public const VERSION = '1.2.0';
+
+# 2) أعد تحميل php-fpm (لا إعادة تشغيل Asterisk، ولا تعديل على اتصالات قائمة):
+sudo systemctl reload php*-fpm        # أو الوحدة المسماة في install.sh
+```
+
+**الدليل السلوكي (لا يكفي `grep` وحده):** من واجهة المؤسسة افتح «بوابات الاتصال»
+— يجب أن تختفي رسالة «خدمة الربط لا تدعم خطوط البوابة بعد»، وأن يعمل زر
+«تحديث الحالة» ويعرض «مسجّل / لا يوجد تسجيل / غير معروفة» من قراءة حقيقية
+لمخاطبات PJSIP. كل مسارات الوكيل موقّعة (بما فيها `/capabilities`)، فلا تُختبر
+بـ`curl` بسيط بلا توقيع — وستعيد `401 unauthorized`، وهذا متوقّع.
+
+**الرجوع (مرة واحدة، إن لزم):**
+
+```bash
+sudo deploy/telephony/bin/rollback.sh <archive>   # يستعيد /etc/asterisk والحالة
+#    ثم أعد ملفات الوكيل السابقة إلى /opt/vodnox-telephony/src و: systemctl reload php*-fpm
+```
+
+الرجوع آمن بلا إعادة تشغيل: الطلب على مسار غير موجود يعيد 404، فيُبلغ التطبيق
+«يلزم تحديث خدمة الربط» بدل ادّعاء نجاح، وتظل المكالمات الداخلية للموظفين تعمل
+كما هي.
+
+> **نطاق الـCI:** خطوة النشر ترفع كود Laravel إلى cPanel فقط. **الـCI لا يكتب
+> `/etc/asterisk` ولا يحدّث الوكيل ولا يفتح منفذاً.** الحزمة أعلاه هي التسليم،
+> وتركيبها (وكذلك المراجعة والرجوع) خطوة يدوية واحدة محقّقة بالأوامر أعلاه.
+
+**شرط تهيئة واحد لا يتكرّر لكل بوابة:** يجب أن يقبل `5060/udp` على العنوان العام
+`38.3.184.246` تسجيل الأجهزة القادم من مواقع العملاء — يُفتح **مرة واحدة** عند
+تشغيل أول بوابة (توسيع قاعدة الجدار القائمة، لا إنشاء transport جديد ولا إعادة
+تشغيل Asterisk). الخط المستخدم هو نقل PJSIP الموجود أصلاً؛ النظام **لا يُنشئ ولا
+يعيد تشغيل أي transport** عند إضافة Gateway.
+
+**ملاحظة جهاز GoIP المعتمد:** الملف المجرَّب `Firmware GHSFVT-1.1-68-9` بخط واحد،
+و`Call In via GSM = Enable`، و`Media Encryption = None` مع `SIP/UDP` — وُصف بذلك
+كما هو، ولا يُوصف بأنه مشفّر. لا ترقية تلقائية ولا reset للجهاز من النظام.
 
 ---
 
@@ -365,7 +454,7 @@ sudo deploy/telephony/bin/rollback.sh <archive>     # استرجاع (ينسخ �
 
 ### تم التحقق منه فعلياً (آلي، داخل المستودع)
 
-- `php artisan test` → **182 اختباراً ناجحاً / 642 تأكيداً**، منها اختبارات الهاتف:
+- `vendor/bin/phpunit` → **242 اختباراً ناجحاً / 906 تأكيداً**، منها اختبارات الهاتف:
   - `tests/Feature/Telephony/EventForwarderTest.php` — **مُرسل الأحداث** (15
     اختباراً / 68 تأكيداً): تمييز القنوات المُدارة ورفض `1001/1002` و`vodnox-test`،
     تحويل `ringing → answered → ended` وتجميع الأرجل على `linkedid`، ثبات
@@ -379,12 +468,44 @@ sudo deploy/telephony/bin/rollback.sh <archive>     # استرجاع (ينسخ �
     `1000`، استخدام مؤسستين لنفس الرقم، فرادة الـ SIP id عالمياً ومفارقته للرقم
     القصير، تشفير كلمة المرور في القاعدة، وخلوّ payload من السرّ، ومنع التكرار
     عند التعطيل، وتزويد الموظفين المؤهّلين فقط.
+  - `tests/Feature/Telephony/GatewayProvisioningTest.php` (20 اختباراً) —
+    **حالة كل خط بوابة بمحاورها الثلاثة المستقلة** (desired / provisioning /
+    registration)، مؤسستان تتشاركان الرقم `1001` بخطين وهويتَي SIP مختلفتين،
+    الهوية `vdg{org}_…` العالمية ولا تساوي الرقم القصير، الملف المولَّد يستخدم
+    `transport-udp` لا WebRTC، تشفير كلمة المرور في القاعدة وخلوّ `payload` ونتيجة
+    الـjob من السرّ مع حقنه **وقت التشغيل فقط**، رفض وجهة تابعة لمؤسسة أخرى
+    (`inbound_destination_unavailable`)، التعطيل يحفظ الهوية ويدفع `enabled=false`،
+    إعادة التفعيل تعيد التزويد فعلياً بـrevision أعلى، حذف الجهاز يزيل كل خطوطه،
+    تدوير السرّ يدفع الجديد، قفل الـjob على المورد (`gateway-line:{org}:{device}:{line}`)
+    لا على الـrevision، وretry متأخر لا يكتب فوق revision أحدث، ووكيل قديم يُنتج
+    `agent_update_required` بلا ادّعاء مزامنة، ومصدر مراقبة غير متاح يُعرض
+    «غير معروفة» لا «منقطعة»، والقراءة القديمة (stale) كذلك، ومكالمة واردة من خط
+    بوابة تُنسب لصاحب البوابة لا لـCaller-ID المُنتحَل.
+  - `tests/Feature/Telephony/GatewayWorkspaceTest.php` (15 اختباراً) — الطلبات عبر
+    HTTP والصلاحيات: الزائر يُحوَّل، و`supervisor` يرى فقط ولا يدير ولا يقرأ
+    الأسرار (403)، وصفحة البوابة **لا تُصيّر كلمة المرور أبداً**، و`organization_admin`
+    لا يصل أداة السوبر أدمن، والمؤسسة تُؤخذ من الجلسة لا من حمولة مُنتحَلة، وتُمحى
+    محارف التحكّم (CR/LF) من النصوص الحرّة، ووجهة مؤسسة أخرى تُرفض، وموديل غير
+    معتمد يُرفض، وجهاز/خط مؤسسة أخرى يعيد 404 لكل إجراء، ونقطة الأسرار بـ`no-store`
+    مع تدقيق `gateway.secret_viewed` بلا السرّ، ووكيل قديم يُظهر إشعار التحديث،
+    وفشل المصدر يُعرض خطأً، ونجاح التحديث يستخدم قراءة التسجيل الحقيقية، وأداة
+    السوبر أدمن **عبر المؤسسات وقراءة فقط وبلا أسرار** (`admin.gateways.store`
+    و`admin.gateways.lines.secret` غير موجودتين).
   - `tests/Feature/Telephony/CallEventMappingTest.php` — ترتيب الأحداث، تجاهل
     الأحداث المتأخرة، عدم إنشاء مكالمة من حدث انتهاء وحده، دمج الأرجل على
     `linkedid`، المدة من `billsec` أو من الزمن المنقضي، وتجريب انتحال
     `organization_id` وتعطيل الرقم المكرر بين مؤسستين.
   - `tests/Feature/Api/TelephonyWebhookTest.php` — رفض التوقيع غير الصحيح،
     منع تكرار `event_id`، بنية payload، ووصول الحدث إلى سجل المكالمات.
+- **CI تشغّل PHPUnit فعلاً** (وظيفة `PHPUnit test suite` في
+  `.github/workflows/main.yml`): خدمة MySQL، `composer install` مع dev، توليد
+  `APP_KEY`، ثم `vendor/bin/phpunit`. وخطوة النشر `deploy` تعتمد عليها
+  (`needs: tests`)، فاختبار أحمر **يمنع** النشر إلى cPanel — نجاح FTP وحده لم يكن
+  يثبت شيئاً لأن `composer install --no-dev` لا يثبّت PHPUnit أصلاً.
+- **حزمة الوكيل** (قسم §5.1): يبنيها `deploy/telephony/bin/package.sh` من قائمة
+  سماح ويفحص محتواها قبل التسليم، ويطبع `agent version` وSHA-256، ويرفعها الـCI
+  كـartifact باسم `vodnox-telephony-agent`. الـCI **لا يكتب `/etc/asterisk`** ولا
+  يحدّث الوكيل.
 - أثناء كتابة اختبار المدة انكشف خلل حقيقي: مقارنة توقيت يحمل إزاحة (`Z`) بقيمة
   زمنية تُقرأ بتوقيت التطبيق كان يُنتج فارقاً بساعة التطبيق. صُحِّح في
   `CallEventService::occurredAt()` بتطبيع التوقيت على توقيت التطبيق.
@@ -392,6 +513,15 @@ sudo deploy/telephony/bin/rollback.sh <archive>     # استرجاع (ينسخ �
 ### لم يتم التحقق منه (يحتاج وصولاً/SSH وشهادة وDNS)
 
 - أي عملية حقيقية على السيرفر: تثبيت الوكيل، `pjsip reload`، `http reload`.
+- **تركيب وكيل `1.2.0`** على سيرفر الوسائط (§5.1) — خطوة المشغّل الواحدة. حتى
+  تنفيذها لا تفعّل الواجهة أي خط بوابة، وتظهر رسالة «خدمة الربط لا تدعم خطوط
+  البوابة بعد»، ولا يُعرض خط كـ«مُزامَن». هذا سلوك صادق مقصود، وليس عطلاً.
+- **تسجيل بوابة GSM/GoIP حقيقية** على `5060/udp` وظهور «مسجّل بالجهاز» من قراءة
+  `pjsip show contacts` الفعلية.
+- **مكالمة GSM واردة حقيقية** تصل إلى التحويلة المختارة، مع رفض رقم غير مُعرَّف
+  داخل سياق الخط ورفض خط مؤسسة معطّلة.
+- **تعطيل/إعادة تفعيل/تدوير سرّ/حذف** خط على جهاز حقيقي: يثبت أن الملفات المولَّدة
+  والحالة على السيرفر تتبع المطلوب بدقة.
 - تسجيل SIP.js فعلياً عبر WSS، والصوت باتجاهين، وDTLS-SRTP/ICE على شبكات حقيقية.
 - تأكيد `pbx.vodnox.com` وشهادته، وفتح المنافذ في الجدار، و`external_*_address`.
 - اختبار TURN من شبكة متماثلة.

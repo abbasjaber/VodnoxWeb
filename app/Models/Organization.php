@@ -52,6 +52,16 @@ class Organization extends Model
         return $this->hasMany(Department::class);
     }
 
+    public function gatewayDevices(): HasMany
+    {
+        return $this->hasMany(GatewayDevice::class);
+    }
+
+    public function gatewayLines(): HasMany
+    {
+        return $this->hasMany(GatewayLine::class);
+    }
+
     public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);

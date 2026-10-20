@@ -46,6 +46,7 @@ return [
     'billing' => 'Billing',
     'usage' => 'Usage',
     'servers' => 'Servers',
+    'gateways' => 'Connection gateways',
     'integrations' => 'Integrations',
     'team' => 'Team',
     'audit' => 'Audit Log',

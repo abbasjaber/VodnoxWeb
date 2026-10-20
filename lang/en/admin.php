@@ -247,6 +247,25 @@ return [
     'method_ari' => 'ARI',
     'method_http' => 'HTTP',
 
+    // GSM gateways (cross-organization, read-only)
+    'gw_title' => 'Connection gateways',
+    'gw_subtitle' => 'Every GSM gateway line across organizations with its honest provisioning and registration state.',
+    'gw_organization' => 'Organization',
+    'gw_device' => 'Device',
+    'gw_model' => 'Model',
+    'gw_lines' => 'Lines',
+    'gw_line' => 'Line',
+    'gw_destination' => 'Incoming target',
+    'gw_provisioning' => 'Provisioning',
+    'gw_registration' => 'Registration',
+    'gw_observed' => 'Observed at',
+    'gw_refresh' => 'Refresh status',
+    'gw_status_refreshed' => 'Registration status was refreshed.',
+    'gw_monitoring_unavailable' => 'Monitoring is unavailable right now; the state stays unknown, never "disconnected".',
+    'gw_agent_old' => 'The connection service on the server does not support gateway lines yet; nothing is shown as synced.',
+    'gw_simulated' => 'No telephony server is configured in this environment; gateway states are simulated.',
+    'gw_readonly' => 'Read-only: secrets are never displayed and no routing can be edited from here.',
+
     // Integrations
     'int_title' => 'Integrations',
     'int_subtitle' => 'Configure external services without exposing credentials.',

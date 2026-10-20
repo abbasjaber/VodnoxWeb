@@ -27,7 +27,12 @@ final class CallTracker
     private const UP_STATE = 6;
     private const BUSY_STATE = 7;
 
-    private const CONTEXT_PATTERN = '/^vodnox_org_[0-9]+$/';
+    /**
+     * A trusted context is either an organization context (vodnox_org_<id>) or
+     * the dedicated inbound context of a GSM gateway line
+     * (vodnox_gw_<organizationId>_<lineId>). Anything else is ignored.
+     */
+    private const CONTEXT_PATTERN = '/^vodnox_(?:org_[0-9]+|gw_[0-9]+_[0-9]+)$/';
 
     /** @var array<int, string> */
     private const CAUSES = [
@@ -116,6 +121,11 @@ final class CallTracker
             $group['caller_username'] = $username;
             $group['caller_number'] ??= $this->number($frame['CallerIDNum'] ?? null);
             $group['callee_number'] ??= $this->number($frame['Exten'] ?? null);
+
+            // A call that starts on a GSM gateway line is an inbound call.
+            if (ChannelIdentity::isGateway($channel)) {
+                $group['direction'] = 'inbound';
+            }
         } elseif ($group['originator'] === null) {
             // A leg created by Dial: the peer being called.
             $group['callee_username'] ??= $username;
@@ -228,7 +238,7 @@ final class CallTracker
             'event_type' => $type,
             'occurred_at' => gmdate('Y-m-d\TH:i:s\Z', (int) $now),
             'linkedid' => $group['linkedid'],
-            'direction' => 'internal',
+            'direction' => $group['direction'] ?? 'internal',
             'caller_username' => $group['caller_username'],
             'callee_username' => $group['callee_username'],
             'caller_number' => $group['caller_number'],
@@ -264,6 +274,7 @@ final class CallTracker
             'linkedid' => $linkedid,
             'legs' => [],
             'originator' => null,
+            'direction' => 'internal',
             'caller_username' => null,
             'callee_username' => null,
             'caller_number' => null,

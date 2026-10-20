@@ -5,6 +5,7 @@ namespace App\Services\Telephony;
 use App\Models\Call;
 use App\Models\CallEvent;
 use App\Models\Extension;
+use App\Models\GatewayLine;
 use Illuminate\Support\Carbon;
 
 /**
@@ -41,11 +42,11 @@ class CallEventService
             return null;
         }
 
-        $caller = $this->resolveEndpoint($payload['caller_username'] ?? null);
-        $callee = $this->resolveEndpoint($payload['callee_username'] ?? null);
+        $caller = $this->resolveIdentity($payload['caller_username'] ?? null);
+        $callee = $this->resolveIdentity($payload['callee_username'] ?? null);
 
         // The organization comes from the resolved endpoint, not the payload.
-        $organizationId = $callee?->organization_id ?? $caller?->organization_id;
+        $organizationId = $callee['organization_id'] ?? $caller['organization_id'] ?? null;
 
         if (! $organizationId) {
             // Unknown endpoints: nothing trustworthy to attach the event to.
@@ -75,12 +76,12 @@ class CallEventService
                 'organization_id' => $organizationId,
                 'external_call_id' => $groupKey,
                 'sip_call_id' => $this->stringOrNull($payload['sip_call_id'] ?? null),
-                'user_id' => $callee?->user_id,
-                'direction' => $this->direction($payload),
+                'user_id' => $callee['user_id'] ?? null,
+                'direction' => $this->direction($payload, $caller, $callee),
                 'caller_number' => $this->stringOrNull($payload['caller_number'] ?? null),
                 'callee_number' => $this->stringOrNull($payload['callee_number'] ?? null),
-                'caller_extension' => $caller?->extension,
-                'callee_extension' => $callee?->extension,
+                'caller_extension' => $caller['extension'] ?? null,
+                'callee_extension' => $callee['extension'] ?? null,
                 'status' => 'ringing',
                 'started_at' => $occurredAt,
             ]);
@@ -155,13 +156,45 @@ class CallEventService
         return $from ? max(0, (int) $from->diffInSeconds($occurredAt)) : null;
     }
 
-    private function resolveEndpoint(mixed $sipUsername): ?Extension
+    /**
+     * Map a SIP username to the tenant that owns it.
+     *
+     * Both managed identities are resolved from our own database: an employee
+     * extension (vdx…) or a GSM gateway line (vdg…). A gateway line belongs to
+     * the organization that owns the device, so an inbound mobile call is
+     * attached to the right tenant — and the external Caller-ID never decides it.
+     *
+     * @return array{organization_id: int, user_id: ?int, extension: ?string, gateway: bool}|null
+     */
+    private function resolveIdentity(mixed $sipUsername): ?array
     {
         if (! is_string($sipUsername) || $sipUsername === '') {
             return null;
         }
 
-        return Extension::query()->where('sip_username', $sipUsername)->first();
+        $extension = Extension::query()->where('sip_username', $sipUsername)->first();
+
+        if ($extension) {
+            return [
+                'organization_id' => (int) $extension->organization_id,
+                'user_id' => $extension->user_id ? (int) $extension->user_id : null,
+                'extension' => $extension->extension,
+                'gateway' => false,
+            ];
+        }
+
+        $line = GatewayLine::query()->where('sip_username', $sipUsername)->first();
+
+        if ($line) {
+            return [
+                'organization_id' => (int) $line->organization_id,
+                'user_id' => null,
+                'extension' => null,
+                'gateway' => true,
+            ];
+        }
+
+        return null;
     }
 
     private function isTerminal(?string $status): bool
@@ -170,10 +203,24 @@ class CallEventService
     }
 
     /**
+     * The direction is derived from trusted ownership: a leg that starts on a
+     * gateway line is inbound (a mobile call arriving), and a leg that ends on
+     * one would be outbound. The reported value is used only as a fallback.
+     *
      * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>|null  $caller
+     * @param  array<string, mixed>|null  $callee
      */
-    private function direction(array $payload): string
+    private function direction(array $payload, ?array $caller, ?array $callee): string
     {
+        if ($caller['gateway'] ?? false) {
+            return 'inbound';
+        }
+
+        if ($callee['gateway'] ?? false) {
+            return 'outbound';
+        }
+
         $direction = (string) ($payload['direction'] ?? 'internal');
 
         return in_array($direction, ['inbound', 'outbound', 'internal'], true) ? $direction : 'internal';

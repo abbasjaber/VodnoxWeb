@@ -10,6 +10,7 @@
         ];
         $items2 = [
             ['servers', 'vodnox.servers', 'servers', route('admin.servers.index')],
+            ['gateways', 'vodnox.gateways', 'integrations', route('admin.gateways.index')],
             ['integrations', 'vodnox.integrations', 'integrations', route('admin.integrations.index')],
             ['team', 'vodnox.team', 'users', route('admin.team.index')],
             ['audit', 'vodnox.audit', 'audit', route('admin.audit.index')],

@@ -66,6 +66,46 @@ interface TelephonyGateway
     public function provisionQueue(array $payload): array;
 
     /**
+     * Provision (or reconcile) one line of a GSM gateway.
+     *
+     * The payload carries the organization, the line identifiers, the inbound
+     * context, the destination endpoint and `enabled`; the SIP password is only
+     * present on creation or rotation and is injected at run time, never stored
+     * in a job payload.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function provisionGatewayLine(array $payload): array;
+
+    /**
+     * Remove one gateway line endpoint and its inbound context.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function deprovisionGatewayLine(array $payload): array;
+
+    /**
+     * Read the real Asterisk registration snapshot for the given gateway lines.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function gatewayStatus(array $payload): array;
+
+    /**
+     * What this implementation can actually do.
+     *
+     * Used for capability/version negotiation: an agent that predates gateway
+     * support answers 501 (or omits the capability), and the UI then says the
+     * provisioning service must be updated instead of pretending to be synced.
+     *
+     * @return array{agent_version: ?string, capabilities: array<int, string>, simulated?: bool}
+     */
+    public function capabilities(): array;
+
+    /**
      * Probe connectivity/auth. Never throws for an expected outage; returns a status array.
      *
      * @return array{ok: bool, status: string, message?: string}

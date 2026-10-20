@@ -80,6 +80,38 @@ return [
 
         // A short-lived cache TTL for the per-user credential endpoint.
         'credential_ttl' => (int) env('TELEPHONY_CREDENTIAL_TTL', 300),
+
+        /*
+        | GSM gateway (GoIP and similar) — a *separate*, classic SIP/UDP
+        | profile from the browser phone above. These are the values an
+        | installer types into the device, so they are the SIP host/port the
+        | gateway registers to — never the HTTPS provisioning URL, the AMI
+        | address or the WSS URL.
+        */
+        'gateway_sip_host' => env('TELEPHONY_GATEWAY_SIP_HOST', env('TELEPHONY_SIP_DOMAIN', 'pbx.vodnox.com')),
+        'gateway_sip_port' => (int) env('TELEPHONY_GATEWAY_SIP_PORT', 5060),
+        'gateway_sip_transport' => env('TELEPHONY_GATEWAY_SIP_TRANSPORT', 'udp'),
+        'gateway_realm' => env('TELEPHONY_GATEWAY_REALM', env('TELEPHONY_SIP_DOMAIN', 'pbx.vodnox.com')),
+        'gateway_registration_interval' => (int) env('TELEPHONY_GATEWAY_REGISTER_INTERVAL', 60),
+
+        // Generated inbound path numbers start here (per organization) so they
+        // never collide with employee extensions and are never hard-coded.
+        'gateway_inbound_start' => (int) env('TELEPHONY_GATEWAY_INBOUND_START', 5000),
+
+        // A registration reading older than this is reported as unknown, not
+        // as "disconnected".
+        'gateway_registration_stale' => (int) env('TELEPHONY_GATEWAY_STALE_SECONDS', 180),
+
+        // Device profiles that were actually exercised; the UI offers only
+        // these and never claims support for an untested model.
+        'gateway_profiles' => [
+            'goip-1' => [
+                'label_ar' => 'GoIP — قناة واحدة (GHSFVT-1.1-68-9)',
+                'label_en' => 'GoIP — 1 channel (GHSFVT-1.1-68-9)',
+                'lines' => 1,
+                'verified' => true,
+            ],
+        ],
     ],
 
     /*

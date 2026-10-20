@@ -41,6 +41,49 @@ class SimulatedTelephonyGateway implements TelephonyGateway
         return $this->result('provision_queue', $payload);
     }
 
+    public function provisionGatewayLine(array $payload): array
+    {
+        return $this->result('provision_gateway_line', $payload);
+    }
+
+    public function deprovisionGatewayLine(array $payload): array
+    {
+        return $this->result('deprovision_gateway_line', $payload);
+    }
+
+    /**
+     * Simulation never claims a device is registered: it reports an explicit
+     * unknown so no UI can display a fake green status.
+     */
+    public function gatewayStatus(array $payload): array
+    {
+        $lines = [];
+
+        foreach ((array) ($payload['sip_usernames'] ?? []) as $username) {
+            $lines[(string) $username] = [
+                'state' => 'unknown',
+                'registered' => false,
+                'source' => 'simulated',
+            ];
+        }
+
+        return [
+            'simulated' => true,
+            'source' => 'simulated',
+            'observed_at' => gmdate('Y-m-d\TH:i:s\Z'),
+            'lines' => $lines,
+        ];
+    }
+
+    public function capabilities(): array
+    {
+        return [
+            'agent_version' => 'simulated',
+            'capabilities' => ['organizations', 'extensions', 'gateway_lines', 'gateway_status'],
+            'simulated' => true,
+        ];
+    }
+
     public function testConnection(): array
     {
         return [

@@ -103,6 +103,31 @@ echo
 echo "==> no secret-looking file is present; allowed examples :"
 echo "${LIST}" | grep -E '(^|/)(config\.example\.php|\.env\.example)$'
 
+# ---------------------------------------------------------------------------
+# Checksum + version, so the operator can prove the archive installed on the
+# media server is byte-identical to the one built here and know which agent
+# contract it carries.
+# ---------------------------------------------------------------------------
+
+if command -v sha256sum >/dev/null 2>&1; then
+    SHA_CMD=(sha256sum)
+else
+    SHA_CMD=(shasum -a 256)
+fi
+
+CHECKSUM_FILE="${ARCHIVE}.sha256"
+(
+    cd "${OUT_DIR}"
+    "${SHA_CMD[@]}" "$(basename "${ARCHIVE}")" > "$(basename "${CHECKSUM_FILE}")"
+)
+chmod 0600 "${CHECKSUM_FILE}"
+
+AGENT_VERSION="$(grep -m1 -oE "const VERSION = '[^']+'" "${SRC}/provisioning/src/Agent.php" \
+    | sed -E "s/.*'([^']+)'/\1/")"
+
 echo
-echo "archive: ${ARCHIVE}"
+echo "agent version : ${AGENT_VERSION:-unknown}"
+echo "checksum      : $(cat "${CHECKSUM_FILE}")"
+echo "archive       : ${ARCHIVE}"
 echo "verify on the target before extracting:  tar -tzf $(basename "${ARCHIVE}")"
+echo "verify the archive before installing   :  ${SHA_CMD[*]} -c $(basename "${CHECKSUM_FILE}")"
