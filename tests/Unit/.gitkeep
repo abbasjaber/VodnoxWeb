@@ -1,0 +1,4 @@
+# Keeps tests/Unit in the repository. Git cannot track an empty directory, and
+# phpunit.xml declares a "Unit" testsuite pointing at this path: without a
+# tracked file here a clean checkout has no tests/Unit at all and PHPUnit stops
+# with "Test directory ... not found" (exit code 2) before running any test.
