@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * One physical line (one SIM) on a gateway device.
@@ -53,6 +54,15 @@ class GatewayLine extends Model
         return $this->belongsTo(Extension::class, 'inbound_extension_id');
     }
 
+    /**
+     * The inbound routing of this port (default / hours / exceptions). Created
+     * lazily so a port added before routing exists still has exactly one row.
+     */
+    public function route(): HasOne
+    {
+        return $this->hasOne(GatewayLineRoute::class);
+    }
+
     public function registrationIsStale(): bool
     {
         if ($this->registration_observed_at === null) {
@@ -69,6 +79,62 @@ class GatewayLine extends Model
         }
 
         return $this->registration_state ?: 'unknown';
+    }
+
+    /**
+     * ONE honest summary state per port.
+     *
+     * The three dimensions stay separate on purpose — `enabled` is what the
+     * administrator asked for, `provisioning_status` is what the server was
+     * told, `registrationLabel()` is what was actually observed — and this
+     * method only folds them into a single chip:
+     *
+     *   unused        the administrator has not marked this port as in use
+     *                 (no SIM assumed: a port without a SIM is never dialled);
+     *   configuring   provisioning is queued / in flight;
+     *   configured    provisioned and reconciled, but no registration reading
+     *                 has arrived yet (no false "connected" claim);
+     *   registered    a real Asterisk contact was seen recently;
+     *   unregistered  the device was seen and is not registered;
+     *   unknown       the monitoring source is unavailable or the reading is
+     *                 stale — never reported as "disconnected";
+     *   blocked       provisioning refused for a readable reason.
+     */
+    public function portState(): string
+    {
+        if (! $this->enabled) {
+            return 'unused';
+        }
+
+        if ($this->provisioning_status === 'failed') {
+            return 'blocked';
+        }
+
+        if (in_array($this->provisioning_status, ['removed', 'disabled'], true)) {
+            return 'unused';
+        }
+
+        if ($this->provisioning_status !== 'synced') {
+            return 'configuring';
+        }
+
+        $observed = $this->registrationLabel();
+
+        if ($observed === 'registered') {
+            return 'registered';
+        }
+
+        if (in_array($observed, ['no_contact', 'unreachable', 'auth_failure'], true)) {
+            return 'unregistered';
+        }
+
+        // Provisioned, registered state genuinely unknown: distinguish "we have
+        // never looked" from "the monitoring source could not answer".
+        if ($this->registration_observed_at === null && ! $this->registration_state) {
+            return 'configured';
+        }
+
+        return 'unknown';
     }
 
     /**

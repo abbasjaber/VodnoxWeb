@@ -51,18 +51,27 @@ final class Agent
      * Bumped whenever the API surface changes, so Laravel can tell which agent
      * answer it is reading.
      */
-    public const VERSION = '1.2.0';
+    public const VERSION = '1.3.0';
 
     /**
      * Operations this build actually implements. Laravel refuses to show a
      * gateway line as "synced/registered" when the answering agent does not
      * advertise `gateway_lines` (an older agent answers 404 or 501).
+     *
+     * `gateway_routing` means the agent compiles the *whole* rule set of a line
+     * (temporary forward, dated exceptions, weekend, business hours, outside
+     * hours, default) into the dialplan and therefore decides at call time.
+     * Without it the line can only dial one fixed destination, so the routing
+     * page asks for a service update instead of pretending the schedule is live.
      */
-    public const CAPABILITIES = ['organizations', 'extensions', 'gateway_lines', 'gateway_status'];
+    public const CAPABILITIES = ['organizations', 'extensions', 'gateway_lines', 'gateway_routing', 'gateway_status'];
 
     private const CONTEXT_PATTERN = '/^vodnox_(?:org|gw)_[a-z0-9_]{1,48}$/';
     private const USERNAME_PATTERN = '/^[A-Za-z0-9_.-]{3,64}$/';
     private const EXTENSION_PATTERN = '/^[0-9*#]{2,10}$/';
+    private const TIMEZONE_PATTERN = '/^[A-Za-z0-9_+\-]{1,32}(?:\/[A-Za-z0-9_+\-]{1,32}){0,2}$/';
+    private const DATE_PATTERN = '/^\d{4}-\d{2}-\d{2}$/';
+    private const TIME_OF_DAY_PATTERN = '/^([01][0-9]|2[0-3]):[0-5][0-9]$/';
 
     /** Upper bound on a single status request, so one call cannot fan out. */
     private const MAX_STATUS_LINES = 50;
@@ -478,8 +487,14 @@ final class Agent
      * Create or reconcile one gateway line.
      *
      * The line gets its own SIP account, its own dedicated inbound context and
-     * exactly one inbound path; there is deliberately no way to point two SIMs
+     * its own routing rule set; there is deliberately no way to point two SIMs
      * (or two organizations) at the same endpoint.
+     *
+     * The `routing` block is the authoritative "where does a call arriving on
+     * this SIM go" definition; it is validated here and compiled into the
+     * dialplan so the decision happens at call time, with no browser and no
+     * scheduler involved. A line that carries no routing block at all (an
+     * older caller) keeps the legacy single-destination behaviour.
      *
      * @param  array<string, mixed>  $payload
      * @return array{status: int, body: array<string, mixed>}
@@ -496,7 +511,11 @@ final class Agent
             throw new Rejected('invalid inbound number', 422);
         }
 
-        $destination = $this->requireUsername($payload['destination_username'] ?? null);
+        // A port may legitimately have no destination yet: it still needs its
+        // SIP account so the device can register and be observed, and the
+        // dialplan then refuses the call with a readable reason.
+        $destination = $this->optionalUsername($payload['destination_username'] ?? null);
+        $routing = $this->normalizeRouting($payload['routing'] ?? null);
         $enabled = (bool) ($payload['enabled'] ?? true);
 
         $gateways = $this->readState('gateways');
@@ -526,6 +545,7 @@ final class Agent
             'organization_context' => $organizationContext,
             'inbound_number' => $inboundNumber,
             'destination_username' => $destination,
+            'routing' => $routing,
             'label' => (string) ($payload['label'] ?? ''),
             'enabled' => $enabled,
         ];
@@ -547,6 +567,7 @@ final class Agent
             'sip_username' => $username,
             'context' => $context,
             'inbound_number' => $inboundNumber,
+            'routing_rules' => $routing === null ? 0 : count($routing['exceptions']) + count($routing['business_hours']) + count($routing['weekend_days']),
             'enabled' => $enabled,
         ]];
     }
@@ -935,9 +956,22 @@ final class Agent
      * The inbound context for one gateway line.
      *
      * It accepts exactly one number — the generated inbound path of that line —
-     * and dials exactly one destination. There is no catch-all that forwards
-     * somewhere else, so a call arriving on SIM A can never reach the
+     * and the *whole* routing rule set of the line is compiled into the dialplan,
+     * so the destination is decided at call time. There is no catch-all that
+     * forwards somewhere else, so a call arriving on SIM A can never reach the
      * destination configured for SIM B, let alone another organization.
+     *
+     * Priority is fixed and identical to the administrator's preview:
+     *   1. the temporary permanent forward, while it is switched on;
+     *   2. a dated exception whose inclusive range covers today;
+     *   3. the weekly rules — a weekend day, then the business-hours windows;
+     *   4. the default destination.
+     * A rule that resolves to no usable target is refused with 480; nothing is
+     * guessed and the call never leaves the organization.
+     *
+     * Note: the payload already applied the configured fallback to each rule,
+     * so a rule with an empty username means "neither the rule nor the fallback
+     * is usable" and is refused.
      */
     private function writeGatewayDialplan(string $context): void
     {
@@ -969,6 +1003,9 @@ final class Agent
         $lines = [
             '; VODNOX generated GSM gateway inbound dialplan - do not edit by hand.',
             '; organization '.$record['organization_id'].' / gateway '.$record['gateway_id'].' / line '.$record['line_id'],
+            '; Routing priority: temporary forward, dated exception, weekend, business',
+            '; hours / outside hours, default. An unresolved rule is refused (480);',
+            '; the call never falls through to another organization or an outbound path.',
             '',
             '['.$context.']',
         ];
@@ -977,20 +1014,160 @@ final class Agent
             $lines[] = '; The line or its organization is inactive: refuse new calls.';
             $lines[] = 'exten => _X.,1,NoOp(VODNOX gateway line inactive)';
             $lines[] = ' same => n,Hangup(403)';
-        } else {
-            $number = (string) $record['inbound_number'];
-            $destination = (string) $record['destination_username'];
 
-            $lines[] = 'exten => '.$number.',1,NoOp(VODNOX GSM inbound on '.$number.')';
-            $lines[] = ' same => n,Dial(PJSIP/'.$destination.','.$ringTimeout.')';
-            $lines[] = ' same => n,Hangup()';
+            $this->atomicWrite($this->gatewayDialplanFile($context), implode(PHP_EOL, $lines).PHP_EOL);
 
-            // No fall-through: any other number arriving on this trunk is dropped.
-            $lines[] = 'exten => _X.,1,NoOp(VODNOX gateway unknown number)';
-            $lines[] = ' same => n,Hangup(404)';
+            return;
         }
 
+        $number = (string) $record['inbound_number'];
+        $routing = is_array($record['routing'] ?? null) ? $record['routing'] : null;
+
+        $lines[] = 'exten => '.$number.',1,NoOp(VODNOX GSM inbound on '.$number.')';
+        $lines[] = ' same => n,Set(VDX_TARGET=)';
+
+        if ($routing === null) {
+            // Legacy payload: one fixed destination, no schedule.
+            $legacy = $this->optionalUsername($record['destination_username'] ?? null);
+
+            if ($legacy === null) {
+                $lines[] = ' same => n,NoOp(VODNOX no destination configured)';
+                $lines[] = ' same => n,Hangup(480)';
+            } else {
+                $lines[] = ' same => n,Set(VDX_TARGET='.$legacy.')';
+                $lines[] = ' same => n,Dial(PJSIP/${VDX_TARGET},'.$ringTimeout.')';
+                $lines[] = ' same => n,Hangup()';
+            }
+
+            $lines[] = '; No fall-through: any other number arriving on this trunk is dropped.';
+            $lines[] = 'exten => _X.,1,NoOp(VODNOX gateway unknown number)';
+            $lines[] = ' same => n,Hangup(404)';
+
+            $this->atomicWrite($this->gatewayDialplanFile($context), implode(PHP_EOL, $lines).PHP_EOL);
+
+            return;
+        }
+
+        foreach ($this->routingDialplan($routing, $ringTimeout) as $line) {
+            $lines[] = $line;
+        }
+
+        // No fall-through: any other number arriving on this trunk is dropped.
+        $lines[] = 'exten => _X.,1,NoOp(VODNOX gateway unknown number)';
+        $lines[] = ' same => n,Hangup(404)';
+
         $this->atomicWrite($this->gatewayDialplanFile($context), implode(PHP_EOL, $lines).PHP_EOL);
+    }
+
+    /**
+     * Compile the routing rule set of one line into dialplan statements.
+     *
+     * The clock is read *once* per call from the channel, in the organization's
+     * timezone (`TZ` is set on the channel before any time function is used, so
+     * the same local clock the administrator's preview uses decides the call).
+     * All comparisons are string comparisons on `%Y%m%d` / `%H%M`, which keeps
+     * the dialplan readable and removes any dependency on Asterisk's
+     * day-of-week/time-range helpers.
+     *
+     * @param  array<string, mixed>  $routing  already validated by normalizeRouting()
+     * @return array<int, string>
+     */
+    private function routingDialplan(array $routing, int $ringTimeout): array
+    {
+        /** @var array<string, mixed> $routing */
+        $lines = [
+            '; The clock is read once, in the organization timezone.',
+            ' same => n,Set(TZ='.$routing['timezone'].')',
+            ' same => n,Set(VDX_W=${STRFTIME(${EPOCH},,%w)})',
+            ' same => n,Set(VDX_T=${STRFTIME(${EPOCH},,%H%M)})',
+            ' same => n,Set(VDX_D=${STRFTIME(${EPOCH},,%Y%m%d)})',
+        ];
+
+        $branches = [];
+
+        if ($routing['temporary_forward_username'] !== null) {
+            // Priority 1: while the temporary forward is on it wins outright, so
+            // the remaining rules are deliberately not compiled in.
+            $lines[] = '; 1. Temporary permanent forward is ON: it wins over every other rule.';
+            $lines[] = ' same => n,Goto(vdx_temporary)';
+            $branches[] = ['label' => 'vdx_temporary', 'target' => $routing['temporary_forward_username'], 'note' => '1. temporary forward'];
+        } else {
+            foreach ($routing['exceptions'] as $index => $exception) {
+                $start = str_replace('-', '', (string) $exception['starts_on']);
+                $end = str_replace('-', '', (string) $exception['ends_on']);
+                $label = 'vdx_exception_'.$index;
+
+                $lines[] = '; 2. Dated exception '.$exception['starts_on'].'..'.$exception['ends_on'].' (both days inclusive).';
+                $lines[] = ' same => n,GotoIf($[${VDX_D} >= '.$start.' & ${VDX_D} <= '.$end.']?'.$label.')';
+                $branches[] = ['label' => $label, 'target' => $exception['destination_username'], 'note' => '2. dated exception'];
+            }
+
+            $weekendDays = $routing['weekend_days'];
+
+            if ($weekendDays !== []) {
+                $condition = implode(' | ', array_map(
+                    static fn (int $day): string => '${VDX_W} == '.$day,
+                    $weekendDays,
+                ));
+
+                if ($routing['weekend_username'] === null) {
+                    // A weekend day with no destination of its own and no
+                    // after-hours destination to reuse: refuse rather than
+                    // falling through to the default.
+                    $lines[] = '; 3. Weekly holiday with no destination: refuse.';
+                    $lines[] = ' same => n,GotoIf($['.$condition.']?vdx_refuse)';
+                } else {
+                    $lines[] = '; 3. Weekly holiday (days '.implode(',', $weekendDays).').';
+                    $lines[] = ' same => n,GotoIf($['.$condition.']?vdx_weekend)';
+                    $branches[] = ['label' => 'vdx_weekend', 'target' => $routing['weekend_username'], 'note' => '3. weekly holiday'];
+                }
+            }
+
+            if ($routing['business_hours'] !== []) {
+                $clauses = [];
+
+                foreach ($routing['business_hours'] as $window) {
+                    $day = (int) $window['day'];
+                    $start = str_replace(':', '', (string) $window['start']);
+                    $end = str_replace(':', '', (string) $window['end']);
+
+                    // End of a window is exclusive; end <= start crosses midnight.
+                    if ($end > $start) {
+                        $clauses[] = '(${VDX_W} == '.$day.' & ${VDX_T} >= '.$start.' & ${VDX_T} < '.$end.')';
+                    } else {
+                        $nextDay = ($day + 1) % 7;
+                        $clauses[] = '((${VDX_W} == '.$day.' & ${VDX_T} >= '.$start.') | (${VDX_W} == '.$nextDay.' & ${VDX_T} < '.$end.'))';
+                    }
+                }
+
+                $lines[] = '; 3. Business hours (a window whose end is not after its start crosses midnight).';
+                $lines[] = ' same => n,GotoIf($['.implode(' | ', $clauses).']?vdx_in_hours)';
+                $lines[] = ' same => n,Goto(vdx_outside)';
+                $branches[] = ['label' => 'vdx_in_hours', 'target' => $routing['in_hours_username'], 'note' => 'business hours'];
+                $branches[] = ['label' => 'vdx_outside', 'target' => $routing['outside_hours_username'], 'note' => 'outside hours'];
+            }
+
+            $lines[] = '; 4. No rule matched: the default destination.';
+            $lines[] = ' same => n,Goto(vdx_default)';
+            $branches[] = ['label' => 'vdx_default', 'target' => $routing['default_username'], 'note' => '4. default'];
+        }
+
+        $lines[] = '';
+
+        foreach ($branches as $branch) {
+            $lines[] = '; '.$branch['note'];
+            $lines[] = ' same => n('.$branch['label'].'),Set(VDX_TARGET='.(string) $branch['target'].')';
+            $lines[] = ' same => n,Goto(vdx_dial)';
+        }
+
+        $lines[] = '';
+        $lines[] = ' same => n(vdx_dial),GotoIf($["${VDX_TARGET}" = ""]?vdx_refuse)';
+        $lines[] = ' same => n,Dial(PJSIP/${VDX_TARGET},'.$ringTimeout.')';
+        $lines[] = ' same => n,Hangup()';
+        $lines[] = ' same => n(vdx_refuse),NoOp(VODNOX no usable destination for this line)';
+        $lines[] = ' same => n,Hangup(480)';
+
+        return $lines;
     }
 
     /**
@@ -1174,5 +1351,147 @@ final class Agent
         }
 
         return $username;
+    }
+
+    /**
+     * A destination that is allowed to be absent.
+     *
+     * A port without a destination is a normal state (its SIM is not used yet),
+     * so an empty value is returned as null instead of being refused.
+     */
+    private function optionalUsername(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return $this->requireUsername($value);
+    }
+
+    /**
+     * Validate the routing block of a line and reduce it to the exact values the
+     * dialplan needs.
+     *
+     * Anything malformed is refused (422) rather than written into a generated
+     * configuration: a bad rule must fail the provisioning call, not silently
+     * produce a dialplan that sends a call somewhere unintended.
+     *
+     * Returns null when the payload carries no routing block at all, which keeps
+     * the legacy single-destination behaviour for an older caller.
+     *
+     * @return array{
+     *     timezone: string,
+     *     temporary_forward_username: ?string,
+     *     exceptions: array<int, array{starts_on: string, ends_on: string, destination_username: string}>,
+     *     weekend_days: array<int, int>,
+     *     business_hours: array<int, array{day: int, start: string, end: string}>,
+     *     in_hours_username: ?string,
+     *     outside_hours_username: ?string,
+     *     weekend_username: ?string,
+     *     default_username: ?string
+     * }|null
+     */
+    private function normalizeRouting(mixed $value): ?array
+    {
+        if (! is_array($value) || $value === []) {
+            return null;
+        }
+
+        $timezone = (string) ($value['timezone'] ?? '');
+
+        if (! preg_match(self::TIMEZONE_PATTERN, $timezone)) {
+            throw new Rejected('invalid routing timezone', 422);
+        }
+
+        $exceptions = [];
+
+        foreach ((array) ($value['exceptions'] ?? []) as $exception) {
+            if (! is_array($exception)) {
+                throw new Rejected('invalid routing exception', 422);
+            }
+
+            $starts = (string) ($exception['starts_on'] ?? '');
+            $ends = (string) ($exception['ends_on'] ?? '');
+            $username = $this->optionalUsername($exception['destination_username'] ?? null);
+
+            // `ends_on` is inclusive, so a range is valid as long as it is not
+            // inverted; an exception without a usable destination is dropped by
+            // the application before it gets here.
+            if (
+                ! preg_match(self::DATE_PATTERN, $starts)
+                || ! preg_match(self::DATE_PATTERN, $ends)
+                || $ends < $starts
+                || $username === null
+            ) {
+                throw new Rejected('invalid routing exception', 422);
+            }
+
+            $exceptions[] = ['starts_on' => $starts, 'ends_on' => $ends, 'destination_username' => $username];
+        }
+
+        if (count($exceptions) > 50) {
+            throw new Rejected('too many routing exceptions', 422);
+        }
+
+        $weekendDays = [];
+
+        foreach ((array) ($value['weekend_days'] ?? []) as $day) {
+            $day = (int) $day;
+
+            if ($day < 0 || $day > 6) {
+                throw new Rejected('invalid weekly holiday day', 422);
+            }
+
+            $weekendDays[] = $day;
+        }
+
+        $weekendDays = array_values(array_unique($weekendDays));
+        sort($weekendDays);
+
+        $windows = [];
+
+        foreach ((array) ($value['business_hours'] ?? []) as $window) {
+            if (! is_array($window)) {
+                throw new Rejected('invalid business hours window', 422);
+            }
+
+            $day = (int) ($window['day'] ?? -1);
+            $start = (string) ($window['start'] ?? '');
+            $end = (string) ($window['end'] ?? '');
+
+            if (
+                $day < 0 || $day > 6
+                || ! preg_match(self::TIME_OF_DAY_PATTERN, $start)
+                || ! preg_match(self::TIME_OF_DAY_PATTERN, $end)
+                || $start === $end
+            ) {
+                throw new Rejected('invalid business hours window', 422);
+            }
+
+            $windows[] = ['day' => $day, 'start' => $start, 'end' => $end];
+        }
+
+        if (count($windows) > 50) {
+            throw new Rejected('too many business hours windows', 422);
+        }
+
+        $temporary = is_array($value['temporary_forward'] ?? null)
+            ? ($value['temporary_forward']['destination_username'] ?? null)
+            : null;
+
+        return [
+            'timezone' => $timezone,
+            'temporary_forward_username' => $this->optionalUsername($temporary),
+            'exceptions' => $exceptions,
+            'weekend_days' => $weekendDays,
+            'business_hours' => $windows,
+            // Each of these already carries the configured fallback when the
+            // rule's own destination was unusable (resolved by the application),
+            // so an empty value genuinely means "refuse".
+            'in_hours_username' => $this->optionalUsername($value['in_hours_destination_username'] ?? null),
+            'outside_hours_username' => $this->optionalUsername($value['outside_hours_destination_username'] ?? null),
+            'weekend_username' => $this->optionalUsername($value['weekend_destination_username'] ?? null),
+            'default_username' => $this->optionalUsername($value['default_destination_username'] ?? null),
+        ];
     }
 }

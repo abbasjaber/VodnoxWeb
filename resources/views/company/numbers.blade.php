@@ -13,12 +13,122 @@
         <p>{{ __('company.numbers_subtitle') }}</p>
     </div>
     <div class="head-actions">
+        <a class="btn-secondary" href="{{ route('company.gateways.index') }}">{{ __('company.gateways_title') }}</a>
         <button type="button" class="btn-primary"
                 data-company-modal
                 data-company-title="{{ __('company.add_number') }}"
                 data-company-action="{{ route('company.numbers.store') }}"
                 data-company-submit="{{ __('company.save') }}"
                 data-company-template="tpl-number-create">{{ __('company.add_number') }}</button>
+    </div>
+</div>
+
+{{-- Group A: internal employee numbers. These are the employee extensions of
+     the organization; each row shows where that employee is already reached
+     from, so no second forwarding entry has to be created for them. --}}
+<div class="card">
+    <div class="card-head">
+        <div><h2>{{ __('company.numbers_group_extensions') }}</h2><p>{{ __('company.numbers_group_extensions_hint') }}</p></div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>{{ __('company.agent') }}</th>
+                    <th>{{ __('company.extension') }}</th>
+                    <th>{{ __('company.status') }}</th>
+                    <th>{{ __('company.numbers_ext_usage') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($extensions as $extension)
+                    <tr>
+                        <td>{{ $extension->label ?: ($extension->user?->name ?? '—') }}</td>
+                        <td class="code-note">{{ $extension->extension }}</td>
+                        <td><span class="status {{ $extension->status === 'active' ? 'active' : 'inactive' }}">{{ __('company.status_labels.'.$extension->status) }}</span></td>
+                        <td>
+                            @php $usage = $extensionUsage[$extension->id] ?? []; @endphp
+                            @if ($usage)
+                                @foreach (array_unique($usage) as $place)
+                                    <span class="tag">{{ $place }}</span>
+                                @endforeach
+                            @else
+                                <small>{{ __('company.numbers_ext_no_usage') }}</small>
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="4" class="empty-row">{{ __('company.no_data') }}</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{{-- Group B: gateway lines and their numbers. The SIM number is descriptive
+     only; the routing itself lives on the port and is edited here. --}}
+<div class="card">
+    <div class="card-head">
+        <div><h2>{{ __('company.numbers_group_lines') }}</h2><p>{{ __('company.numbers_group_lines_hint') }}</p></div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>{{ __('company.numbers_line_device') }}</th>
+                    <th>{{ __('company.gateway_port') }}</th>
+                    <th>{{ __('company.gateway_line_label') }}</th>
+                    <th>{{ __('company.gateway_sim_number') }}</th>
+                    <th>{{ __('company.numbers_line_state') }}</th>
+                    <th>{{ __('company.numbers_line_default_destination') }}</th>
+                    <th>{{ __('company.numbers_line_schedule') }}</th>
+                    <th>{{ __('company.actions') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($gatewayDevices as $device)
+                    @foreach ($device->lines as $line)
+                        @php
+                            $route = $line->route;
+                            $hasWeekly = ($route?->businessHours?->isNotEmpty() ?? false) || ($route?->weekendDays?->isNotEmpty() ?? false);
+                            $hasExceptions = $route?->dateExceptions?->isNotEmpty() ?? false;
+                        @endphp
+                        <tr>
+                            <td>{{ $device->label }}</td>
+                            <td><strong>#{{ $line->line_index }}</strong></td>
+                            <td>{{ $line->label ?: '—' }}</td>
+                            <td class="code-note">{{ $line->sim_number ?: '—' }}</td>
+                            <td><span class="status {{ $line->enabled ? 'active' : 'inactive' }}">{{ __('company.gateway_port_'.$line->portState()) }}</span></td>
+                            <td>
+                                @if ($route?->defaultDestination)
+                                    {{ $route->defaultDestination->extension }}{{ $route->defaultDestination->label ? ' — '.$route->defaultDestination->label : '' }}
+                                @else
+                                    —
+                                @endif
+                            </td>
+                            <td>
+                                @if ($hasWeekly)
+                                    <span class="tag">{{ __('company.numbers_schedule_weekly') }}</span>
+                                @else
+                                    <span class="tag">{{ __('company.numbers_schedule_always') }}</span>
+                                @endif
+                                @if ($hasExceptions)
+                                    <span class="tag">{{ __('company.numbers_schedule_exceptions') }}</span>
+                                @endif
+                                @if ($route?->temporary_forward_enabled)
+                                    <span class="tag">{{ __('company.numbers_schedule_temporary') }}</span>
+                                @endif
+                            </td>
+                            <td>
+                                <a class="row-link" href="{{ route('company.numbers.routing.edit', ['gateway' => $device, 'line' => $line]) }}">{{ __('company.gateway_manage_routing') }}</a>
+                            </td>
+                        </tr>
+                    @endforeach
+                @empty
+                    <tr><td colspan="8" class="empty-row">{{ __('company.numbers_no_lines') }}</td></tr>
+                @endforelse
+            </tbody>
+        </table>
     </div>
 </div>
 

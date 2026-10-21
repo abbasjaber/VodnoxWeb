@@ -16,7 +16,7 @@ Smart IVR) ولا تظهر إعدادات المؤسسة أو الاشتراكا
 
 | المسار | الوظيفة |
 | --- | --- |
-| `provisioning/src/Agent.php` | خدمة التزويد (PHP 8.2 بلا تبعيات): تتحقق من التوقيع، تمنع التكرار (nonce + idempotency + flock)، وتكتب إعدادات Asterisk ذرّياً. تُصدر كذلك `/capabilities` و`/gateway-lines` و`/gateway-status`، والإصدار الحالي **`1.2.0`**. |
+| `provisioning/src/Agent.php` | خدمة التزويد (PHP 8.2 بلا تبعيات): تتحقق من التوقيع، تمنع التكرار (nonce + idempotency + flock)، وتكتب إعدادات Asterisk ذرّياً. تُصدر كذلك `/capabilities` و`/gateway-lines` و`/gateway-status`، والإصدار الحالي **`1.3.0`**. |
 | `provisioning/public/index.php` | نقطة الدخول الوحيدة للخدمة؛ ترفض أي طلب بلا توقيع صحيح. |
 | `provisioning/config.example.php` | قالب الإعدادات؛ يُنسخ إلى `config.php` ويحمل السرّين فقط. |
 | `events/src/*.php` | **مُرسل أحداث المكالمات**: يقرأ AMI على loopback، يحوّل الأحداث إلى مفردات VODNOX، يخزّنها على القرص، ويرسلها موقّعة إلى webhook التطبيق. |
@@ -182,7 +182,7 @@ sudo asterisk -rx 'core reload'      # يقرأ http.conf (الشهادة/WSS) �
 
 ---
 
-## 5.1 تحديث وكيل التزويد إلى `1.2.0` (دعم بوابات GSM/GoIP)
+## 5.1 تحديث وكيل التزويد إلى `1.3.0` (بوابات GSM/GoIP + توجيه الوارد)
 
 **هذه أهم خطوة يبقى على المشغّل تنفيذها.** الوكيل المركَّب حالياً على السيرفر
 (`38.3.184.246`) هو إصدار ما قبل البوابات: لا يملك `/capabilities` ولا
@@ -190,16 +190,20 @@ sudo asterisk -rx 'core reload'      # يقرأ http.conf (الشهادة/WSS) �
 «خدمة الربط على الخادم لا تدعم خطوط البوابة بعد»، ولا يُعرض أي خط كـ«مُزامَن» —
 وهذا **سلوك صادق لا خطأ**، ومقصود: لا يُعلَن نجاح مزامنة لم تحدث.
 
-**ما الجديد في `1.2.0`:** `GET /capabilities`، `POST/DELETE /gateway-lines`،
+**ما الجديد في `1.3.0`:** `GET /capabilities`، `POST/DELETE /gateway-lines`،
 `POST /gateway-status`، وملفا `gateway_*.conf` (endpoint بـSIP/UDP + سياق وارد
-مخصّص لكل خط). **لا تغيير** على عقد الموظفين القائم (`/organizations`,
+مخصّص لكل خط). وفوق ذلك قدرة **`gateway_routing`**: يترجم الوكيل **كامل** مجموع
+قواعد المنفذ (التحويل المؤقت، استثناءات التواريخ، نهاية الأسبوع، ساعات العمل،
+خارج ساعات العمل، الوجهة الافتراضية) إلى dialplan ويقرّر وقت المكالمة بنفس
+ترتيب الأولوية الذي تعرضه المعاينة، ويرفض المكالمة (`Hangup(480)`) بلا تخمين عند
+غياب أي وجهة صالحة. **لا تغيير** على عقد الموظفين القائم (`/organizations`,
 `/extensions`) ولا على `config.php`؛ لذلك **لا تُلمس الأسرار ولا `config.php` ولا
 الحالة ولا الملفات المولّدة**.
 
 **الحزمة تأتي من CI:** كل تشغيل ناجح على `main` يرفع artifact باسم
 `vodnox-telephony-agent` يحوي `vodnox-telephony-<UTC>.tar.gz` و
 `vodnox-telephony-<UTC>.tar.gz.sha256` (وبصمة SHA-256 مطبوعة في سجل التشغيل مع
-`agent version : 1.2.0`).
+`agent version : 1.3.0`).
 
 ```bash
 # 0) نزّل الحزمة: GitHub → Actions → آخر تشغيل ناجح على main → Artifacts.
@@ -216,7 +220,7 @@ sudo chown -R root:asterisk /opt/vodnox-telephony/src
 
 #    تحقّق أن الملف المستقرّ فعلاً هو الإصدار الجديد:
 grep -m1 "const VERSION" /opt/vodnox-telephony/src/Agent.php
-#    المتوقّع: public const VERSION = '1.2.0';
+#    المتوقّع: public const VERSION = '1.3.0';
 
 # 2) أعد تحميل php-fpm (لا إعادة تشغيل Asterisk، ولا تعديل على اتصالات قائمة):
 sudo systemctl reload php*-fpm        # أو الوحدة المسماة في install.sh
@@ -513,7 +517,7 @@ sudo deploy/telephony/bin/rollback.sh <archive>     # استرجاع (ينسخ �
 ### لم يتم التحقق منه (يحتاج وصولاً/SSH وشهادة وDNS)
 
 - أي عملية حقيقية على السيرفر: تثبيت الوكيل، `pjsip reload`، `http reload`.
-- **تركيب وكيل `1.2.0`** على سيرفر الوسائط (§5.1) — خطوة المشغّل الواحدة. حتى
+- **تركيب وكيل `1.3.0`** على سيرفر الوسائط (§5.1) — خطوة المشغّل الواحدة. حتى
   تنفيذها لا تفعّل الواجهة أي خط بوابة، وتظهر رسالة «خدمة الربط لا تدعم خطوط
   البوابة بعد»، ولا يُعرض خط كـ«مُزامَن». هذا سلوك صادق مقصود، وليس عطلاً.
 - **تسجيل بوابة GSM/GoIP حقيقية** على `5060/udp` وظهور «مسجّل بالجهاز» من قراءة

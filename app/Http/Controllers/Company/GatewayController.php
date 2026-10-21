@@ -5,13 +5,11 @@ namespace App\Http\Controllers\Company;
 use App\Http\Controllers\Concerns\ResolvesTenant;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Company\GatewayDeviceRequest;
-use App\Models\Extension;
 use App\Models\GatewayDevice;
 use App\Models\GatewayLine;
 use App\Services\AuditService;
 use App\Services\Telephony\GatewayProvisioningService;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 /**
  * Organization workspace: GSM gateway lines.
@@ -37,17 +35,9 @@ class GatewayController extends Controller
         $org = $this->organization($request);
 
         $devices = $org->gatewayDevices()
-            ->with(['lines.destination'])
+            ->with(['lines.route.defaultDestination', 'lines.destination'])
             ->orderBy('label')
             ->get();
-
-        // Destinations offered to the administrator are active extensions of
-        // *this* organization only; the server re-checks ownership on save.
-        $destinations = $org->extensions()
-            ->where('status', 'active')
-            ->whereNotNull('sip_username')
-            ->orderBy('extension')
-            ->get(['id', 'extension', 'label']);
 
         $capabilities = $this->gateways->capabilities();
         $supportsGateways = $this->gateways->agentSupportsGateways();
@@ -55,10 +45,10 @@ class GatewayController extends Controller
         return view('company.gateways', [
             'org' => $org,
             'devices' => $devices,
-            'destinations' => $destinations,
             'profiles' => $this->gateways->profiles(),
             'serverSettings' => $this->gateways->serverSettings(),
             'supportsGateways' => $supportsGateways,
+            'supportsRouting' => $this->gateways->agentSupportsRouting(),
             'simulated' => $this->gateways->isSimulated(),
             'agentVersion' => $capabilities['agent_version'] ?? null,
             'canManage' => $request->user()->hasPermission('manage_gateways'),
@@ -83,7 +73,7 @@ class GatewayController extends Controller
                 'network_notes' => $data['network_notes'] ?? null,
                 'enabled' => (bool) ($data['enabled'] ?? true),
             ],
-            $data['lines'],
+            $data['lines'] ?? [],
         );
 
         // Audit the topology only; SIP credentials are never written here.
@@ -94,7 +84,7 @@ class GatewayController extends Controller
             [
                 'label' => $device->label,
                 'model' => $device->model,
-                'lines' => $device->lines()->get(['line_index', 'inbound_extension_id'])->toArray(),
+                'ports' => $device->lines()->get(['line_index', 'enabled'])->toArray(),
             ],
             null,
             $org->id,
@@ -181,6 +171,37 @@ class GatewayController extends Controller
     }
 
     /**
+     * The unified "link the device" page for one device.
+     *
+     * Everything an installer has to type into the device lives here, in one
+     * place: the settings shared by the whole device (SIP host/port/transport)
+     * and the per-port settings the model needs (authentication id, password,
+     * phone number). Each port is labelled next to its own values so a line's
+     * credentials can never be copied onto another line by mistake.
+     *
+     * The password itself is never rendered: it is revealed on demand through
+     * the secret endpoint, which has its own permission.
+     */
+    public function settings(Request $request, GatewayDevice $gateway)
+    {
+        $this->authorizePermission($request, 'view_gateways');
+        $org = $this->organization($request);
+        $this->authorizeTenant($org, $gateway);
+
+        $gateway->load('lines.route.defaultDestination');
+
+        return view('company.gateway-settings', [
+            'org' => $org,
+            'gateway' => $gateway,
+            'serverSettings' => $this->gateways->serverSettings(),
+            'profile' => $this->gateways->profiles()[$gateway->model] ?? null,
+            'supportsRouting' => $this->gateways->agentSupportsRouting(),
+            'canManage' => $request->user()->hasPermission('manage_gateways'),
+            'canViewSecret' => $request->user()->hasPermission('view_gateway_secrets'),
+        ]);
+    }
+
+    /**
      * Enable/disable a device; its lines follow and are re-provisioned for real
      * on re-enable (the identity is kept, the server state is rebuilt).
      */
@@ -199,7 +220,12 @@ class GatewayController extends Controller
     }
 
     /**
-     * Change the inbound destination of one line (and its descriptive label).
+     * Update the descriptive data of one port and whether it is in use.
+     *
+     * The inbound destination is deliberately NOT here any more: it belongs to
+     * the numbers & routing workspace, which owns the whole routing rule set.
+     * Marking a port "in use" is what makes it eligible for provisioning; a
+     * port that is off is never dialled and never assumed to carry a SIM.
      */
     public function updateLine(Request $request, GatewayDevice $gateway, GatewayLine $line)
     {
@@ -211,25 +237,28 @@ class GatewayController extends Controller
         $data = $request->validate([
             'label' => ['nullable', 'string', 'max:120'],
             'sim_number' => ['nullable', 'string', 'max:40'],
-            'inbound_extension_id' => [
-                'required', 'integer',
-                Rule::exists('extensions', 'id')->where(
-                    fn ($query) => $query->where('organization_id', $org->id)->where('status', 'active')
-                ),
-            ],
+            'enabled' => ['nullable', 'boolean'],
         ]);
 
-        $old = $line->only(['label', 'sim_number', 'inbound_extension_id']);
+        $old = $line->only(['label', 'sim_number', 'enabled']);
+
+        $inUse = (bool) ($data['enabled'] ?? $line->enabled);
 
         $line->fill([
             'label' => $data['label'] ?? null,
             'sim_number' => $data['sim_number'] ?? null,
-            'inbound_extension_id' => $data['inbound_extension_id'],
         ])->save();
 
-        $this->audit->log('gateway.line.updated', $line, $old, $line->only(['label', 'sim_number', 'inbound_extension_id']), null, $org->id);
+        $this->audit->log('gateway.line.updated', $line, $old, $line->only(['label', 'sim_number', 'enabled']), null, $org->id);
 
-        $this->gateways->syncLine($line);
+        // Toggling the port and editing its description are one action from the
+        // administrator's point of view; re-provisioning keeps the identity and
+        // never rotates the secret.
+        if ($inUse !== (bool) $old['enabled']) {
+            $this->gateways->setLineEnabled($line, $inUse);
+        } else {
+            $this->gateways->syncLine($line);
+        }
 
         return redirect()->route('company.gateways.index')->with('status', __('company.updated'));
     }

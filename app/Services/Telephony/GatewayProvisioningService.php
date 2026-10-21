@@ -32,6 +32,7 @@ class GatewayProvisioningService
     public function __construct(
         private readonly GatewayCredentialService $credentials,
         private readonly TelephonyProvisioningService $provisioning,
+        private readonly GatewayLineRoutingService $routing,
         private readonly TelephonyGateway $gateway,
     ) {}
 
@@ -63,6 +64,18 @@ class GatewayProvisioningService
     public function agentSupportsGateways(bool $refresh = false): bool
     {
         return in_array('gateway_lines', $this->capabilities($refresh)['capabilities'], true);
+    }
+
+    /**
+     * Whether the agent can apply the *time-based* line routing (business hours,
+     * weekend, dated exceptions, temporary forward) inside the dialplan.
+     *
+     * A 1.2.0 agent can only dial one fixed destination, so the UI must say the
+     * service has to be updated instead of pretending the schedule is live.
+     */
+    public function agentSupportsRouting(bool $refresh = false): bool
+    {
+        return in_array('gateway_routing', $this->capabilities($refresh)['capabilities'], true);
     }
 
     public function isSimulated(): bool
@@ -103,12 +116,21 @@ class GatewayProvisioningService
     */
 
     /**
-     * Create a gateway device together with its lines.
+     * Create a gateway device together with one row per physical port.
+     *
+     * Adding a device is deliberately short: a descriptive label, the approved
+     * model profile and optional firmware/notes. The model profile fixes how
+     * many ports exist. **No inbound destination, employee or schedule is asked
+     * for here** — routing is managed afterwards, per port, from the numbers &
+     * routing workspace, which is the single place that owns destinations.
+     *
+     * Every port starts as "not in use", so a port without a SIM is never
+     * dialled; the administrator explicitly enables the ports that carry one.
      *
      * @param  array<string, mixed>  $attributes  label, model, firmware, network_notes, enabled
-     * @param  array<int, array<string, mixed>>  $lines  label, sim_number, inbound_extension_id, enabled
+     * @param  array<int, array<string, mixed>>  $lines  optional: label, sim_number, enabled (per port)
      */
-    public function createDevice(Organization $organization, ?int $createdBy, array $attributes, array $lines): GatewayDevice
+    public function createDevice(Organization $organization, ?int $createdBy, array $attributes, array $lines = []): GatewayDevice
     {
         $profile = $this->profile((string) ($attributes['model'] ?? ''));
 
@@ -124,7 +146,11 @@ class GatewayProvisioningService
             'provisioning_status' => 'pending',
         ]);
 
-        foreach (array_slice(array_values($lines), 0, $profile['lines']) as $index => $row) {
+        $lines = array_values($lines);
+
+        for ($index = 0; $index < $profile['lines']; $index++) {
+            $row = is_array($lines[$index] ?? null) ? $lines[$index] : [];
+
             // The SIP identity and the inbound path are allocated *before* the
             // row is inserted: both columns are NOT NULL and unique, and the
             // administrator never supplies either of them.
@@ -133,8 +159,7 @@ class GatewayProvisioningService
                 'line_index' => $index + 1,
                 'label' => $row['label'] ?? null,
                 'sim_number' => $row['sim_number'] ?? null,
-                'inbound_extension_id' => $row['inbound_extension_id'] ?? null,
-                'enabled' => (bool) ($row['enabled'] ?? true),
+                'enabled' => (bool) ($row['enabled'] ?? false),
                 'provisioning_status' => 'pending',
             ]);
 
@@ -142,6 +167,10 @@ class GatewayProvisioningService
             $line->inbound_number = $this->allocateInboundNumber($organization);
 
             $device->lines()->save($line);
+
+            // The routing row is created for every port, empty by default, so
+            // routing exists from the first render instead of on first edit.
+            $this->routing->routeFor($line);
 
             $this->syncLine($line);
         }
@@ -214,9 +243,14 @@ class GatewayProvisioningService
      * Reconcile one gateway line with the server.
      *
      * Returns false when the line is administratively blocked (inactive
-     * organization or an unusable inbound destination): in that case nothing is
-     * pushed to the server, so an existing, working line is never silently
-     * switched off. The block is recorded with a clear, localisable reason.
+     * organization). Otherwise the SIP account, the dedicated inbound context
+     * and the *whole routing rule set* of the line are pushed, so the call-time
+     * decision lives in the generated dialplan rather than in the browser or a
+     * scheduled job.
+     *
+     * A port with no destination yet is still provisioned (its SIP account must
+     * exist so the device can register and be observed); the dialplan then
+     * refuses the call with a readable reason instead of guessing a target.
      */
     public function syncLine(GatewayLine $line): bool
     {
@@ -224,16 +258,6 @@ class GatewayProvisioningService
         $device = $line->device;
 
         if (! $organization || ! $device) {
-            return false;
-        }
-
-        if (! $this->destinationIsUsable($line)) {
-            $line->forceFill([
-                'provisioning_status' => 'failed',
-                'provisioning_error' => 'inbound_destination_unavailable',
-            ])->save();
-            $device->recomputeStatus();
-
             return false;
         }
 
@@ -252,6 +276,10 @@ class GatewayProvisioningService
 
         $this->credentials->ensure($line);
         $line->refresh();
+
+        // Keep the port's routing row present (it mirrors the legacy single
+        // destination when it was created before routing existed).
+        $this->routing->routeFor($line);
 
         if (! $line->inbound_number) {
             $line->inbound_number = $this->allocateInboundNumber($organization);
@@ -470,8 +498,11 @@ class GatewayProvisioningService
     /**
      * The persisted payload of a gateway-line reconcile.
      *
-     * It carries identifiers, the generated inbound number/context and the
-     * revision — never the SIP password (injected by the job at run time).
+     * It carries identifiers, the generated inbound number/context, the
+     * revision and the *whole routing rule set* — never the SIP password
+     * (injected by the job at run time). The routing block is what the agent
+     * compiles into the call-time dialplan, so it must be complete: a missing
+     * rule would make the live call disagree with the preview.
      *
      * @return array<string, mixed>
      */
@@ -479,6 +510,8 @@ class GatewayProvisioningService
     {
         $organization = $line->organization;
         $device = $line->device;
+        $route = $this->routing->routeFor($line);
+        $routing = $this->routing->payload($route);
 
         return [
             'organization_id' => $organization?->getKey(),
@@ -489,7 +522,12 @@ class GatewayProvisioningService
             'line_index' => $line->line_index,
             'context' => $line->inboundContext(),
             'inbound_number' => $line->inbound_number,
-            'destination_username' => $line->destination?->sip_username,
+            // Kept for the agent's legacy single-destination path. It is the
+            // *resolved* default — usability and tenant already applied — so an
+            // unusable or foreign destination can never leak through it either.
+            // The routing block below is the authoritative one.
+            'destination_username' => $routing['default_destination_username'],
+            'routing' => $routing,
             'label' => $line->label,
             'enabled' => $enabled && $organization?->isActive() === true,
             'revision' => $revision,
@@ -497,17 +535,17 @@ class GatewayProvisioningService
     }
 
     /**
-     * The inbound destination must be an active extension that belongs to the
-     * *same* organization as the line.
+     * Whether the line has at least one *usable* destination (its default or its
+     * configured fallback). Used by the UI to warn that a port has no route yet;
+     * it no longer blocks provisioning, because a port must be able to register
+     * before its routing is chosen.
      */
     public function destinationIsUsable(GatewayLine $line): bool
     {
-        $destination = $line->destination;
+        $route = $this->routing->routeFor($line);
 
-        return $destination instanceof Extension
-            && (int) $destination->organization_id === (int) $line->organization_id
-            && $destination->status === 'active'
-            && (bool) $destination->sip_username;
+        return $this->routing->usable($route->defaultDestination, $route)
+            || $this->routing->usable($route->fallbackDestination, $route);
     }
 
     /*

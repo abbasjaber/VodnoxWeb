@@ -2,18 +2,19 @@
 
 namespace App\Http\Requests\Company;
 
-use App\Models\GatewayDevice;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Validates a GSM gateway device and its lines.
+ * Validates a GSM gateway device and (optionally) its ports.
+ *
+ * Adding a device is deliberately short and never asks for an inbound
+ * destination, an employee or a schedule: those belong to the numbers & routing
+ * workspace. The model profile alone fixes how many ports the device has.
  *
  * Security-relevant rules:
  *  - the model must be one of the *approved* device profiles, never free text,
  *    so an installer can never make the agent write an untested config;
- *  - an inbound destination must be an extension of the *same* organization
- *    (checked server side, not trusted from the form);
  *  - free-text fields are stripped of control characters so a crafted label
  *    cannot inject CRLF / INI / dialplan content into a generated config.
  */
@@ -66,10 +67,6 @@ class GatewayDeviceRequest extends FormRequest
      */
     public function rules(): array
     {
-        $organizationId = $this->user()->organization_id;
-        /** @var GatewayDevice|null $device */
-        $device = $this->route('gateway');
-
         $profiles = array_keys((array) config('integrations.telephony.gateway_profiles', []));
 
         $rules = [
@@ -80,31 +77,16 @@ class GatewayDeviceRequest extends FormRequest
             'enabled' => ['nullable', 'boolean'],
         ];
 
-        // Lines are only submitted when a device is created; afterwards each
-        // line is managed on its own (identity must never be swapped silently).
+        // Ports are created server-side from the model profile. On create an
+        // administrator may optionally mark which ports carry a SIM; an inbound
+        // destination is *never* collected here.
         if ($this->isMethod('post')) {
-            $rules['lines'] = ['required', 'array', 'min:1'];
+            $rules['lines'] = ['nullable', 'array'];
             $rules['lines.*.label'] = ['nullable', 'string', 'max:120'];
             $rules['lines.*.sim_number'] = ['nullable', 'string', 'max:40'];
-            $rules['lines.*.inbound_extension_id'] = [
-                'required', 'integer',
-                Rule::exists('extensions', 'id')->where(function ($query) use ($organizationId) {
-                    $query->where('organization_id', $organizationId)->where('status', 'active');
-                }),
-            ];
             $rules['lines.*.enabled'] = ['nullable', 'boolean'];
         }
 
         return $rules;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function messages(): array
-    {
-        return [
-            'lines.*.inbound_extension_id.exists' => __('company.gateway_destination_invalid'),
-        ];
     }
 }

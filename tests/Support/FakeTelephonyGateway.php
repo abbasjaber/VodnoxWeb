@@ -17,8 +17,8 @@ class FakeTelephonyGateway implements TelephonyGateway
 {
     /** @var array<string, mixed> */
     public array $capabilitiesResponse = [
-        'agent_version' => '1.2.0',
-        'capabilities' => ['organizations', 'extensions', 'gateway_lines', 'gateway_status'],
+        'agent_version' => '1.3.0',
+        'capabilities' => ['organizations', 'extensions', 'gateway_lines', 'gateway_routing', 'gateway_status'],
     ];
 
     /** @var array<string, mixed> */

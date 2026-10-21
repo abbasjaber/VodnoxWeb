@@ -102,14 +102,54 @@ return [
         // as "disconnected".
         'gateway_registration_stale' => (int) env('TELEPHONY_GATEWAY_STALE_SECONDS', 180),
 
-        // Device profiles that were actually exercised; the UI offers only
-        // these and never claims support for an untested model.
+        /*
+        | Device profiles.
+        |
+        | A profile fixes three things that differ between models and that no
+        | administrator may improvise:
+        |  - `lines`            how many SIM ports the model actually has;
+        |  - `credential_mode`  how the device authenticates:
+        |                         per_line → every port registers with its OWN
+        |                                    SIP account (each port gets its own
+        |                                    Authentication ID / Phone Number);
+        |                         shared   → the whole device uses one account.
+        |                       Every profile currently shipping uses per_line,
+        |                       which is what the agent implements, so a model
+        |                       needing one account for all ports is deliberately
+        |                       NOT offered instead of being faked.
+        |  - `verified`         whether the profile was exercised on real hardware.
+        |
+        | `verified: false` profiles are offered but labelled as unverified in
+        | the UI, and the operator is told a real multi-port device has to be
+        | tested before the model can be considered supported.
+        */
         'gateway_profiles' => [
             'goip-1' => [
-                'label_ar' => 'GoIP — قناة واحدة (GHSFVT-1.1-68-9)',
-                'label_en' => 'GoIP — 1 channel (GHSFVT-1.1-68-9)',
+                'label_ar' => 'GoIP — منفذ واحد (GHSFVT-1.1-68-9)',
+                'label_en' => 'GoIP — 1 port (GHSFVT-1.1-68-9)',
                 'lines' => 1,
+                'credential_mode' => 'per_line',
                 'verified' => true,
+                'notes_ar' => 'مختبر فعلياً على جهاز حقيقي: تسجيل SIP وصوت باتجاهين.',
+                'notes_en' => 'Exercised on real hardware: SIP registration and two-way audio.',
+            ],
+            'goip-4' => [
+                'label_ar' => 'GoIP — 4 منافذ (GSM)',
+                'label_en' => 'GoIP — 4 ports (GSM)',
+                'lines' => 4,
+                'credential_mode' => 'per_line',
+                'verified' => false,
+                'notes_ar' => 'لم يُختبر بعد على جهاز حقيقي متعدد المنافذ. كل منفذ يأخذ حساب SIP مستقلاً ورقم مسار وارد مستقلاً.',
+                'notes_en' => 'Not yet exercised on real multi-port hardware. Each port gets its own SIP account and its own inbound path number.',
+            ],
+            'goip-8' => [
+                'label_ar' => 'GoIP — 8 منافذ (GSM)',
+                'label_en' => 'GoIP — 8 ports (GSM)',
+                'lines' => 8,
+                'credential_mode' => 'per_line',
+                'verified' => false,
+                'notes_ar' => 'لم يُختبر بعد على جهاز حقيقي. عدد المنافذ من ملف الموديل فقط؛ يلزم اختبار جهاز 8 منافذ قبل اعتماده بالكامل.',
+                'notes_en' => 'Not yet exercised on real hardware. The port count comes from the model profile only; an 8-port device must be tested before it is fully supported.',
             ],
         ],
     ],

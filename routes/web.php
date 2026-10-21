@@ -25,6 +25,7 @@ use App\Http\Controllers\Company\ExtensionController as CompanyExtension;
 use App\Http\Controllers\Company\FormController as CompanyForm;
 use App\Http\Controllers\Company\FormSubmissionController as CompanyFormSubmission;
 use App\Http\Controllers\Company\GatewayController as CompanyGateway;
+use App\Http\Controllers\Company\GatewayLineRoutingController as CompanyGatewayRouting;
 use App\Http\Controllers\Company\IvrController as CompanyIvr;
 use App\Http\Controllers\Company\NumberController as CompanyNumber;
 use App\Http\Controllers\Company\OpportunityController as CompanyOpportunity;
@@ -258,9 +259,21 @@ Route::middleware(['auth', 'tenant', 'role:organization_admin,supervisor'])->pre
     Route::post('gateways/{gateway}/retry', [CompanyGateway::class, 'retry'])->name('gateways.retry');
     Route::post('gateways/{gateway}/refresh', [CompanyGateway::class, 'refresh'])->name('gateways.refresh');
     Route::post('gateways/{gateway}/toggle', [CompanyGateway::class, 'toggle'])->name('gateways.toggle');
+    Route::get('gateways/{gateway}/settings', [CompanyGateway::class, 'settings'])->name('gateways.settings');
     Route::put('gateways/{gateway}/lines/{line}', [CompanyGateway::class, 'updateLine'])->name('gateways.lines.update');
     Route::post('gateways/{gateway}/lines/{line}/rotate', [CompanyGateway::class, 'rotate'])->name('gateways.lines.rotate');
     Route::get('gateways/{gateway}/lines/{line}/secret', [CompanyGateway::class, 'secret'])->name('gateways.lines.secret');
+
+    /*
+    | Numbers & routing: the ONE place that owns a port's inbound destination.
+    | The port's routing (default / business hours / weekend / dated exceptions /
+    | temporary forward) is stored here and compiled by the Asterisk agent into
+    | the call-time dialplan, so a closed browser or a stopped cron changes
+    | nothing. Each action is gated by its own permission inside the controller.
+    */
+    Route::get('numbers/routing/{gateway}/{line}', [CompanyGatewayRouting::class, 'edit'])->name('numbers.routing.edit');
+    Route::put('numbers/routing/{gateway}/{line}', [CompanyGatewayRouting::class, 'update'])->name('numbers.routing.update');
+    Route::post('numbers/routing/{gateway}/{line}/preview', [CompanyGatewayRouting::class, 'preview'])->name('numbers.routing.preview');
 
     /*
     | CRM (independent subscription)

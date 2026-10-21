@@ -7,9 +7,11 @@ use App\Jobs\ProvisionTelephonyJob;
 use App\Models\Call;
 use App\Models\Extension;
 use App\Models\GatewayDevice;
+use App\Models\GatewayLine;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\Telephony\CallEventService;
+use App\Services\Telephony\GatewayLineRoutingService;
 use App\Services\Telephony\GatewayProvisioningService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -27,9 +29,9 @@ use Tests\TestCase;
  *   - the SIP identity is globally unique and is never the employee number;
  *   - the SIP password is encrypted at rest, hidden from JSON and never written
  *     into a job payload, a provisioning_jobs row or an audit trail;
- *   - a line is never pushed when its inbound destination is unusable, and an
- *     unusable destination is recorded with a reason instead of silently
- *     switching a working line off;
+ *   - a port with no destination yet is still provisioned (it must be able to
+ *     register and be observed), while a destination belonging to another
+ *     organization is never compiled into the payload;
  *   - enable/disable keeps the identity and re-provisions for real on re-enable;
  *   - capability negotiation makes an old agent ask for a service update rather
  *     than reporting a fake "synced";
@@ -107,10 +109,12 @@ class GatewayProvisioningTest extends TestCase
     {
         $organization ??= $this->organization;
 
+        // A device is added without a destination: the port is used but its
+        // inbound routing is owned by the numbers & routing workspace and is
+        // attached afterwards with `routeLineTo()`.
         $lines ??= [[
             'label' => 'SIM 1',
             'sim_number' => '07701111111',
-            'inbound_extension_id' => $this->destination($organization)->id,
             'enabled' => true,
         ]];
 
@@ -120,6 +124,17 @@ class GatewayProvisioningTest extends TestCase
             ['label' => 'GoIP', 'model' => 'goip-1'],
             $lines,
         );
+    }
+
+    /**
+     * Point a port's default inbound destination at an extension, the way the
+     * numbers & routing workspace does.
+     */
+    private function routeLineTo(GatewayLine $line, Extension $destination): void
+    {
+        app(GatewayLineRoutingService::class)->routeFor($line)
+            ->forceFill(['default_destination_extension_id' => $destination->id])
+            ->save();
     }
 
     private function lastGatewayJob(): ProvisionTelephonyJob
@@ -146,6 +161,9 @@ class GatewayProvisioningTest extends TestCase
     public function test_two_organizations_may_share_the_number_1001_yet_keep_separate_lines(): void
     {
         $other = $this->organization();
+
+        $this->destination($this->organization, '1001');
+        $this->destination($other, '1001');
 
         $deviceA = $this->createDevice();
         $deviceB = $this->createDevice(null, $other);
@@ -246,45 +264,56 @@ class GatewayProvisioningTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
-    public function test_a_line_is_not_pushed_when_its_destination_belongs_to_another_organization(): void
+    public function test_a_port_with_no_destination_is_still_provisioned_but_refuses_the_call(): void
+    {
+        // A port must be able to register before its routing is chosen, so a
+        // missing destination never blocks provisioning; the dialplan then
+        // refuses the call instead of guessing a target.
+        $device = $this->createDevice();
+        $line = $device->lines()->first();
+
+        $this->assertNull($line->inbound_extension_id);
+
+        Queue::assertPushed(
+            ProvisionTelephonyJob::class,
+            fn (ProvisionTelephonyJob $job) => $job->gatewayLineId === $line->id,
+        );
+
+        $payload = $this->gateways->linePayload($line, 1, true);
+
+        $this->assertNull($payload['destination_username']);
+        $this->assertNull($payload['routing']['default_destination_username']);
+    }
+
+    public function test_a_destination_from_another_organization_is_never_compiled_into_the_payload(): void
     {
         // The destination lives in tenant A, but the gateway line belongs to
-        // tenant B: the pairing must be refused, not silently accepted.
+        // tenant B: even forced straight onto the routing row (the UI would
+        // refuse it), it must never reach the agent.
         $organizationA = $this->organization();
         $organizationB = $this->organization();
 
         $foreignExtension = $this->destination($organizationA, '1001');
 
-        $deviceB = $this->createDevice([[
-            'label' => 'SIM X',
-            'inbound_extension_id' => $foreignExtension->id,
-            'enabled' => true,
-        ]], $organizationB);
-
+        $deviceB = $this->createDevice(null, $organizationB);
         $line = $deviceB->lines()->first();
 
-        $this->assertSame($organizationB->id, $line->organization_id);
-        $this->assertSame('failed', $line->provisioning_status);
-        $this->assertSame('inbound_destination_unavailable', $line->provisioning_error);
-        $this->assertSame('failed', $deviceB->fresh()->provisioning_status);
+        $this->routeLineTo($line, $foreignExtension);
 
-        // Nothing was pushed for the blocked line (a working line is never
-        // silently switched off).
-        Queue::assertNotPushed(
-            ProvisionTelephonyJob::class,
-            fn (ProvisionTelephonyJob $job) => $job->gatewayLineId === $line->id,
-        );
+        $payload = $this->gateways->linePayload($line->refresh(), 1, true);
+
+        $this->assertNull($payload['destination_username']);
+        $this->assertNull($payload['routing']['default_destination_username']);
+        $this->assertNull($payload['routing']['in_hours_destination_username']);
     }
 
     public function test_destination_is_usable_only_for_an_active_extension_of_the_same_organization(): void
     {
         $mine = $this->destination();
-        $device = $this->createDevice([[
-            'label' => 'SIM 1',
-            'inbound_extension_id' => $mine->id,
-            'enabled' => true,
-        ]]);
+        $device = $this->createDevice();
         $line = $device->lines()->first();
+
+        $this->routeLineTo($line, $mine);
 
         $this->assertTrue($this->gateways->destinationIsUsable($line->fresh()));
 
@@ -541,7 +570,7 @@ class GatewayProvisioningTest extends TestCase
 
         $device = $this->createDevice();
         $line = $device->lines()->first();
-        $destination = Extension::where('organization_id', $this->organization->id)->firstOrFail();
+        $destination = $this->destination();
 
         $otherOrganization = $this->organization();
 

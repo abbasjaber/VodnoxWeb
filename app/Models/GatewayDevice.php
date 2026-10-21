@@ -84,6 +84,25 @@ class GatewayDevice extends Model
     }
 
     /**
+     * Ports the administrator has marked as actually carrying a SIM.
+     *
+     * A port is never assumed to have a SIM: only an explicitly enabled port
+     * counts as used, which is also the only kind of port that gets provisioned.
+     */
+    public function usedLinesCount(): int
+    {
+        return $this->lines->where('enabled', true)->count();
+    }
+
+    /**
+     * Ports still free on the device.
+     */
+    public function availableLinesCount(): int
+    {
+        return max(0, (int) $this->max_lines - $this->usedLinesCount());
+    }
+
+    /**
      * The device-level provisioning state is the aggregate of its lines, so a
      * device is only "synced" when every one of its lines is.
      */

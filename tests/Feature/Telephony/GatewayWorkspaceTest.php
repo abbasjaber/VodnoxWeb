@@ -6,9 +6,11 @@ use App\Contracts\Telephony\TelephonyGateway;
 use App\Models\AuditLog;
 use App\Models\Extension;
 use App\Models\GatewayDevice;
+use App\Models\GatewayLine;
 use App\Models\Organization;
 use App\Models\Permission;
 use App\Models\User;
+use App\Services\Telephony\GatewayLineRoutingService;
 use App\Services\Telephony\GatewayProvisioningService;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -28,7 +30,8 @@ use Tests\TestCase;
  *     belong to the bound device also resolves to 404;
  *   - free-text fields are stripped of control characters before they can reach
  *     a generated config (CRLF / INI / dialplan injection);
- *   - the inbound destination must be an active extension of the same tenant;
+ *   - adding a device never collects — or invents — an inbound destination, so
+ *     it can never link another tenant's extension either;
  *   - the secret endpoint is no-store, audited without the secret, and the
  *     secret never appears in any HTML page;
  *   - the super-admin tool is cross-tenant and read-only.
@@ -114,12 +117,27 @@ class GatewayWorkspaceTest extends TestCase
 
     private function deviceFor(Organization $organization, Extension $destination): GatewayDevice
     {
-        return $this->gateways->createDevice(
+        // A device is added *without* an inbound destination: routing is owned
+        // by the numbers & routing workspace and is attached afterwards.
+        $device = $this->gateways->createDevice(
             $organization,
             $this->admin->id,
             ['label' => 'GoIP '.$organization->id, 'model' => 'goip-1'],
-            [['label' => 'SIM 1', 'sim_number' => '0770', 'inbound_extension_id' => $destination->id, 'enabled' => true]],
+            [['label' => 'SIM 1', 'sim_number' => '0770', 'enabled' => true]],
         );
+
+        $this->setDefaultDestination($device->lines()->first(), $destination);
+
+        return $device;
+    }
+
+    private function setDefaultDestination(GatewayLine $line, Extension $destination): void
+    {
+        app(GatewayLineRoutingService::class)->routeFor($line)
+            ->forceFill(['default_destination_extension_id' => $destination->id])
+            ->save();
+
+        $line->forceFill(['inbound_extension_id' => $destination->id])->save();
     }
 
     private function ownDevice(): GatewayDevice
@@ -150,7 +168,7 @@ class GatewayWorkspaceTest extends TestCase
             ->post(route('company.gateways.store'), [
                 'label' => 'GoIP',
                 'model' => 'goip-1',
-                'lines' => [['inbound_extension_id' => $this->extension($this->organization, '1002')->id]],
+                'lines' => [['label' => 'SIM 1', 'enabled' => true]],
             ])
             ->assertForbidden();
 
@@ -195,7 +213,6 @@ class GatewayWorkspaceTest extends TestCase
 
     public function test_an_admin_can_add_a_device_and_the_tenant_comes_from_the_session(): void
     {
-        $destination = $this->extension($this->organization);
         $other = $this->organization();
 
         $this->actingAs($this->admin)
@@ -207,7 +224,6 @@ class GatewayWorkspaceTest extends TestCase
                 'lines' => [[
                     'label' => 'SIM 1',
                     'sim_number' => '07701111111',
-                    'inbound_extension_id' => $destination->id,
                 ]],
             ])
             ->assertRedirect(route('company.gateways.index'))
@@ -220,14 +236,17 @@ class GatewayWorkspaceTest extends TestCase
         $this->assertSame(1, $device->lines()->count());
 
         $line = $device->lines()->first();
-        $this->assertSame($destination->id, $line->inbound_extension_id);
+
+        // Adding a device never asks for (or invents) an inbound destination:
+        // the port is created unused and its routing is chosen afterwards from
+        // the numbers & routing workspace.
+        $this->assertNull($line->inbound_extension_id);
+        $this->assertFalse($line->enabled);
         $this->assertNotSame($line->inbound_number, $line->sip_username);
     }
 
     public function test_control_characters_are_stripped_from_free_text(): void
     {
-        $destination = $this->extension($this->organization);
-
         $this->actingAs($this->admin)
             ->post(route('company.gateways.store'), [
                 'label' => "GoIP\r\n[context]\nmalicious=1",
@@ -236,7 +255,6 @@ class GatewayWorkspaceTest extends TestCase
                 'lines' => [[
                     'label' => "SIM\r\n1",
                     'sim_number' => "0770\r\n0",
-                    'inbound_extension_id' => $destination->id,
                 ]],
             ])
             ->assertRedirect(route('company.gateways.index'))
@@ -251,30 +269,34 @@ class GatewayWorkspaceTest extends TestCase
         }
     }
 
-    public function test_a_destination_from_another_organization_is_rejected(): void
+    public function test_adding_a_device_never_links_a_destination_from_another_organization(): void
     {
         $foreign = $this->extension($this->organization(), '1001');
 
+        // The store does not own destinations at all, so a posted one is
+        // ignored rather than stored — even a foreign extension id.
         $this->actingAs($this->admin)
             ->post(route('company.gateways.store'), [
                 'label' => 'GoIP',
                 'model' => 'goip-1',
-                'lines' => [['inbound_extension_id' => $foreign->id]],
+                'lines' => [['inbound_extension_id' => $foreign->id, 'enabled' => true]],
             ])
-            ->assertSessionHasErrors('lines.0.inbound_extension_id');
+            ->assertRedirect(route('company.gateways.index'))
+            ->assertSessionHasNoErrors();
 
-        $this->assertSame(0, GatewayDevice::query()->count());
+        $line = GatewayDevice::query()->sole()->lines()->first();
+
+        $this->assertNull($line->inbound_extension_id);
+        $this->assertNull($line->route->default_destination_extension_id);
     }
 
     public function test_an_unapproved_model_is_rejected(): void
     {
-        $destination = $this->extension($this->organization);
-
         $this->actingAs($this->admin)
             ->post(route('company.gateways.store'), [
                 'label' => 'GoIP',
                 'model' => 'goip-99',
-                'lines' => [['inbound_extension_id' => $destination->id]],
+                'lines' => [['label' => 'SIM 1']],
             ])
             ->assertSessionHasErrors('model');
 
@@ -316,7 +338,7 @@ class GatewayWorkspaceTest extends TestCase
 
         $this->actingAs($this->admin)
             ->put(route('company.gateways.lines.update', [$deviceA, $lineOfB]), [
-                'inbound_extension_id' => $this->extension($this->organization, '1003')->id,
+                'label' => 'Hijacked',
             ])
             ->assertNotFound();
 

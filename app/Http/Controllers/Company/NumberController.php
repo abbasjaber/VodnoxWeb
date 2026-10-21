@@ -39,7 +39,7 @@ class NumberController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        $extensions = $org->extensions()->orderBy('extension')->get();
+        $extensions = $org->extensions()->with('user')->orderBy('extension')->get();
         $ivrMenus = IvrMenu::query()->where('organization_id', $org->id)->orderBy('id')->get();
         $queues = CallQueue::query()->where('organization_id', $org->id)->orderBy('id')->get();
 
@@ -56,7 +56,43 @@ class NumberController extends Controller
         }
         $routingLabels['voicemail'] = __('company.dest_voicemail');
 
-        return view('company.numbers', compact('org', 'numbers', 'extensions', 'ivrMenus', 'queues', 'routingLabels', 'q', 'status'));
+        // Group B: the gateway lines, with the whole routing rule set loaded so
+        // the summary below reflects the same rows the dialplan is built from.
+        $gatewayDevices = $org->gatewayDevices()
+            ->with([
+                'lines.route.defaultDestination',
+                'lines.route.outsideHoursDestination',
+                'lines.route.weekendDestination',
+                'lines.route.dateExceptions',
+                'lines.route.businessHours',
+                'lines.route.weekendDays',
+            ])
+            ->orderBy('label')
+            ->get();
+
+        // Where each internal extension is already reached from, so an
+        // administrator sees the real, existing linkage instead of creating a
+        // second forwarding entry for the same employee.
+        $extensionUsage = [];
+        foreach ($gatewayDevices as $device) {
+            foreach ($device->lines as $line) {
+                $route = $line->route;
+                $targets = array_filter([
+                    $route?->default_destination_extension_id,
+                    $route?->outside_hours_destination_extension_id,
+                    $route?->weekend_destination_extension_id,
+                    $route?->temporary_forward_extension_id,
+                ]);
+                foreach (array_unique($targets) as $extensionId) {
+                    $extensionUsage[$extensionId][] = $device->label.' · #'.$line->line_index;
+                }
+            }
+        }
+
+        return view('company.numbers', compact(
+            'org', 'numbers', 'extensions', 'ivrMenus', 'queues', 'routingLabels',
+            'gatewayDevices', 'extensionUsage', 'q', 'status',
+        ));
     }
 
     public function store(PhoneNumberRequest $request)
