@@ -245,29 +245,54 @@
 (function () {
     'use strict';
 
-    /* Keep the port blocks in sync with the number of ports of the chosen model. */
-    var model = document.querySelector('[data-gateway-model]');
-    var container = document.querySelector('[data-gateway-lines]');
-    var notes = document.querySelectorAll('[data-gateway-note]');
-
-    function syncLines() {
+    /*
+     * The device fields live inside <template id="tpl-gateway-create">, so they
+     * are not part of the document until the dialog is opened and its body is
+     * filled from the template. Querying them at load time therefore returned
+     * nothing, the sync never ran, and every port block stayed visible even for
+     * a one-port GoIP.
+     *
+     * The port blocks are now synced from the *open* dialog: as soon as its
+     * body is populated (and again after a failed validation round trip), then
+     * on every model change through event delegation scoped to that dialog body.
+     */
+    function syncLines(body) {
+        var model = body.querySelector('[data-gateway-model]');
+        var container = body.querySelector('[data-gateway-lines]');
         if (!model || !container) { return; }
+
         var option = model.options[model.selectedIndex];
         var wanted = parseInt((option && option.getAttribute('data-lines')) || '1', 10);
-        var rows = container.querySelectorAll('[data-company-row]');
-        rows.forEach(function (row, index) {
-            var disabled = index >= wanted;
-            row.hidden = disabled;
-            row.querySelectorAll('[name]').forEach(function (node) { node.disabled = disabled; });
+        if (!(wanted >= 1)) { wanted = 1; }
+
+        /* Only the ports of the chosen profile are shown, and the extra blocks
+           are disabled as well as hidden so they can never be submitted. */
+        container.querySelectorAll('[data-company-row]').forEach(function (row, index) {
+            var unused = index >= wanted;
+            row.hidden = unused;
+            row.querySelectorAll('[name]').forEach(function (node) { node.disabled = unused; });
         });
-        notes.forEach(function (note) {
+
+        /* The note under the select follows the chosen device too. */
+        body.querySelectorAll('[data-gateway-note]').forEach(function (note) {
             note.hidden = note.getAttribute('data-gateway-note') !== model.value;
         });
     }
 
-    if (model) {
-        model.addEventListener('change', syncLines);
-        syncLines();
+    var modalBody = document.getElementById('modalBody');
+
+    if (modalBody) {
+        /* The dialog body is replaced on every open, so the initial state is
+           re-applied whenever its content changes — including when a rejected
+           form comes back with its old input. */
+        new MutationObserver(function () { syncLines(modalBody); })
+            .observe(modalBody, {childList: true});
+
+        /* Delegated: the model <select> is re-created on every open, so a
+           listener bound to the node itself would not survive a reopen. */
+        modalBody.addEventListener('change', function (event) {
+            if (event.target.closest('[data-gateway-model]')) { syncLines(modalBody); }
+        });
     }
 
     /* Reveal a SIP secret on demand; never cached by the browser. */

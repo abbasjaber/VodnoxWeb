@@ -106,6 +106,14 @@ jobs:
       - name: Browser phone mute tests
         run: node tests/js/telephony-mute.probe.mjs
 
+      # Behavioural test for the "add gateway" dialog's port blocks. It runs the
+      # real controller out of resources/views/company/gateways.blade.php inside
+      # a stubbed DOM that keeps the template inert until the dialog opens, then
+      # drives open -> 8 ports -> 1 port -> reopen and asserts which port fields
+      # a browser would submit. A grep for "syncLines" would prove none of that.
+      - name: Gateway dialog port tests
+        run: node tests/js/gateway-ports.probe.mjs
+
       # Behavioural tests for the Certbot deploy hook. They run entirely inside
       # a temp fixture with a stub PATH: no root, no writes to the runner's
       # system directories, no network. `bash -n` alone is not enough here —

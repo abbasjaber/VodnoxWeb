@@ -67,11 +67,11 @@ class GatewayDeviceRequest extends FormRequest
      */
     public function rules(): array
     {
-        $profiles = array_keys((array) config('integrations.telephony.gateway_profiles', []));
+        $profiles = (array) config('integrations.telephony.gateway_profiles', []);
 
         $rules = [
             'label' => ['required', 'string', 'max:120'],
-            'model' => ['required', 'string', Rule::in($profiles)],
+            'model' => ['required', 'string', Rule::in(array_keys($profiles))],
             'firmware' => ['nullable', 'string', 'max:120'],
             'network_notes' => ['nullable', 'string', 'max:1000'],
             'enabled' => ['nullable', 'boolean'],
@@ -81,7 +81,13 @@ class GatewayDeviceRequest extends FormRequest
         // administrator may optionally mark which ports carry a SIM; an inbound
         // destination is *never* collected here.
         if ($this->isMethod('post')) {
-            $rules['lines'] = ['nullable', 'array'];
+            // The model profile fixes how many ports exist, so a client may only
+            // describe that many: the extra blocks the browser hides are never
+            // trusted to stay hidden, and more ports than the device has is
+            // rejected instead of being silently ignored.
+            $ports = max(1, (int) ($profiles[(string) $this->input('model')]['lines'] ?? 1));
+
+            $rules['lines'] = ['nullable', 'array', 'max:'.$ports];
             $rules['lines.*.label'] = ['nullable', 'string', 'max:120'];
             $rules['lines.*.sim_number'] = ['nullable', 'string', 'max:40'];
             $rules['lines.*.enabled'] = ['nullable', 'boolean'];

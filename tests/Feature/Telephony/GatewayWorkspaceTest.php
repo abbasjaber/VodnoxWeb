@@ -303,6 +303,60 @@ class GatewayWorkspaceTest extends TestCase
         $this->assertSame(0, GatewayDevice::query()->count());
     }
 
+    public function test_a_one_port_profile_never_accepts_eight_ports(): void
+    {
+        // The browser hides and disables the surplus port blocks, but the server
+        // must not depend on that: a one-port device can never be created with
+        // eight ports, and nothing is written.
+        $this->actingAs($this->admin)
+            ->post(route('company.gateways.store'), [
+                'label' => 'GoIP',
+                'model' => 'goip-1',
+                'lines' => array_map(
+                    fn (int $index) => ['label' => 'SIM '.($index + 1)],
+                    range(0, 7),
+                ),
+            ])
+            ->assertSessionHasErrors('lines');
+
+        $this->assertSame(0, GatewayDevice::query()->count());
+    }
+
+    public function test_an_eight_port_profile_creates_exactly_eight_independent_ports(): void
+    {
+        $lines = [];
+        for ($index = 0; $index < 8; $index++) {
+            $lines[] = [
+                'label' => 'SIM '.($index + 1),
+                'sim_number' => '0770000'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
+                'enabled' => true,
+            ];
+        }
+
+        $this->actingAs($this->admin)
+            ->post(route('company.gateways.store'), [
+                'label' => 'GoIP 8',
+                'model' => 'goip-8',
+                'lines' => $lines,
+            ])
+            ->assertRedirect(route('company.gateways.index'))
+            ->assertSessionHasNoErrors();
+
+        $device = GatewayDevice::query()->sole();
+        $ports = $device->lines()->orderBy('line_index')->get();
+
+        $this->assertSame(8, $device->max_lines);
+        $this->assertSame(8, $ports->count());
+        $this->assertSame(range(1, 8), $ports->pluck('line_index')->all());
+        $this->assertSame('SIM 1', $ports->first()->label);
+        $this->assertSame('SIM 8', $ports->last()->label);
+        $this->assertTrue($ports->first()->enabled);
+
+        // Each port keeps its own identity and its own inbound path.
+        $this->assertCount(8, $ports->pluck('sip_username')->unique());
+        $this->assertCount(8, $ports->pluck('inbound_number')->unique());
+    }
+
     public function test_another_tenants_device_is_not_found_for_every_action(): void
     {
         $otherOrganization = $this->organization();
