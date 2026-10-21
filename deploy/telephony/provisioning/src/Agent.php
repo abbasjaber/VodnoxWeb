@@ -1062,12 +1062,17 @@ final class Agent
     /**
      * Compile the routing rule set of one line into dialplan statements.
      *
-     * The clock is read *once* per call from the channel, in the organization's
-     * timezone (`TZ` is set on the channel before any time function is used, so
-     * the same local clock the administrator's preview uses decides the call).
+     * The clock is sampled *once* per call and then converted to the
+     * organization's timezone *explicitly* for every lookup: `${STRFTIME}` reads
+     * its zone from the second argument, so passing the organization zone is
+     * what makes the call agree with the administrator's preview. An empty
+     * second argument would silently fall back to the server's zone, and
+     * sampling `${EPOCH}` once removes the risk of the weekday, the time and the
+     * date being read on opposite sides of a second or midnight boundary.
      * All comparisons are string comparisons on `%Y%m%d` / `%H%M`, which keeps
      * the dialplan readable and removes any dependency on Asterisk's
-     * day-of-week/time-range helpers.
+     * day-of-week/time-range helpers. `TZ` is still set on the channel so the
+     * rest of the channel's own time functions follow the organization too.
      *
      * @param  array<string, mixed>  $routing  already validated by normalizeRouting()
      * @return array<int, string>
@@ -1075,22 +1080,29 @@ final class Agent
     private function routingDialplan(array $routing, int $ringTimeout): array
     {
         /** @var array<string, mixed> $routing */
+        $timezone = (string) $routing['timezone'];
+
         $lines = [
-            '; The clock is read once, in the organization timezone.',
-            ' same => n,Set(TZ='.$routing['timezone'].')',
-            ' same => n,Set(VDX_W=${STRFTIME(${EPOCH},,%w)})',
-            ' same => n,Set(VDX_T=${STRFTIME(${EPOCH},,%H%M)})',
-            ' same => n,Set(VDX_D=${STRFTIME(${EPOCH},,%Y%m%d)})',
+            '; The clock is sampled once and converted with the organization timezone',
+            '; explicitly: an empty STRFTIME zone argument would use the server zone.',
+            ' same => n,Set(TZ='.$timezone.')',
+            ' same => n,Set(VDX_TZ='.$timezone.')',
+            ' same => n,Set(VDX_NOW=${EPOCH})',
+            ' same => n,Set(VDX_W=${STRFTIME(${VDX_NOW},${VDX_TZ},%w)})',
+            ' same => n,Set(VDX_T=${STRFTIME(${VDX_NOW},${VDX_TZ},%H%M)})',
+            ' same => n,Set(VDX_D=${STRFTIME(${VDX_NOW},${VDX_TZ},%Y%m%d)})',
         ];
 
         $branches = [];
 
-        if ($routing['temporary_forward_username'] !== null) {
+        if ($routing['temporary_forward_enabled']) {
             // Priority 1: while the temporary forward is on it wins outright, so
-            // the remaining rules are deliberately not compiled in.
+            // the remaining rules are deliberately not compiled in. A forward
+            // that resolves to no usable target is still compiled — and then
+            // refused — so the call can never fall through to a lower rule.
             $lines[] = '; 1. Temporary permanent forward is ON: it wins over every other rule.';
             $lines[] = ' same => n,Goto(vdx_temporary)';
-            $branches[] = ['label' => 'vdx_temporary', 'target' => $routing['temporary_forward_username'], 'note' => '1. temporary forward'];
+            $branches[] = ['label' => 'vdx_temporary', 'target' => $routing['temporary_forward_username'] ?? '', 'note' => '1. temporary forward'];
         } else {
             foreach ($routing['exceptions'] as $index => $exception) {
                 $start = str_replace('-', '', (string) $exception['starts_on']);
@@ -1099,7 +1111,10 @@ final class Agent
 
                 $lines[] = '; 2. Dated exception '.$exception['starts_on'].'..'.$exception['ends_on'].' (both days inclusive).';
                 $lines[] = ' same => n,GotoIf($[${VDX_D} >= '.$start.' & ${VDX_D} <= '.$end.']?'.$label.')';
-                $branches[] = ['label' => $label, 'target' => $exception['destination_username'], 'note' => '2. dated exception'];
+                // The target may legitimately be empty: the exception matches,
+                // but neither it nor the fallback has a usable destination, so
+                // the call is refused instead of dropping to a weekly rule.
+                $branches[] = ['label' => $label, 'target' => $exception['destination_username'] ?? '', 'note' => '2. dated exception'];
             }
 
             $weekendDays = $routing['weekend_days'];
@@ -1381,8 +1396,9 @@ final class Agent
      *
      * @return array{
      *     timezone: string,
+     *     temporary_forward_enabled: bool,
      *     temporary_forward_username: ?string,
-     *     exceptions: array<int, array{starts_on: string, ends_on: string, destination_username: string}>,
+     *     exceptions: array<int, array{starts_on: string, ends_on: string, destination_username: ?string}>,
      *     weekend_days: array<int, int>,
      *     business_hours: array<int, array{day: int, start: string, end: string}>,
      *     in_hours_username: ?string,
@@ -1415,13 +1431,13 @@ final class Agent
             $username = $this->optionalUsername($exception['destination_username'] ?? null);
 
             // `ends_on` is inclusive, so a range is valid as long as it is not
-            // inverted; an exception without a usable destination is dropped by
-            // the application before it gets here.
+            // inverted. A missing username is NOT an error: the exception still
+            // matches on its dates and is then refused, so a call can never
+            // silently drop to a lower-priority rule.
             if (
                 ! preg_match(self::DATE_PATTERN, $starts)
                 || ! preg_match(self::DATE_PATTERN, $ends)
                 || $ends < $starts
-                || $username === null
             ) {
                 throw new Rejected('invalid routing exception', 422);
             }
@@ -1475,12 +1491,16 @@ final class Agent
             throw new Rejected('too many business hours windows', 422);
         }
 
-        $temporary = is_array($value['temporary_forward'] ?? null)
-            ? ($value['temporary_forward']['destination_username'] ?? null)
-            : null;
+        // `null` means the forward is off; an object means it is ON, even when
+        // its destination is empty — then the forward still matches and the call
+        // is refused rather than falling through to a lower-priority rule.
+        $temporaryForward = $value['temporary_forward'] ?? null;
+        $temporaryEnabled = is_array($temporaryForward);
+        $temporary = $temporaryEnabled ? ($temporaryForward['destination_username'] ?? null) : null;
 
         return [
             'timezone' => $timezone,
+            'temporary_forward_enabled' => $temporaryEnabled,
             'temporary_forward_username' => $this->optionalUsername($temporary),
             'exceptions' => $exceptions,
             'weekend_days' => $weekendDays,

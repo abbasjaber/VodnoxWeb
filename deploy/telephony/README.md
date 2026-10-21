@@ -218,12 +218,21 @@ sudo deploy/telephony/bin/backup.sh pre-agent-update
 sudo cp -a /tmp/vodnox-agent-<UTC>/provisioning/src/. /opt/vodnox-telephony/src/
 sudo chown -R root:asterisk /opt/vodnox-telephony/src
 
+#    ملاحظة: الخطوة أعلاه تنسخ `provisioning/src` فقط. لا يُكتب أي شيء في
+#    /etc/asterisk ولا في مجلدات الوكيل المولّدة، لذا يبقى أي **حساب GoIP
+#    مُعدّ يدوياً** (اسم المستخدم وكلمة المرور والـtransport ورقم الوارد
+#    والـcontext اليدوي) وإعداداته كما هي بلا أي مساس. الوكيل يملك فقط
+#    الملفات المشتقّة من حالة داخلية: generated/gateway_<username>.conf
+#    وdialplan/gateway_<context>.conf، ولا يحذف أو يستبدل ملفاً لا يعرف اسمه.
+
 #    تحقّق أن الملف المستقرّ فعلاً هو الإصدار الجديد:
 grep -m1 "const VERSION" /opt/vodnox-telephony/src/Agent.php
 #    المتوقّع: public const VERSION = '1.3.0';
 
-# 2) أعد تحميل php-fpm (لا إعادة تشغيل Asterisk، ولا تعديل على اتصالات قائمة):
-sudo systemctl reload php*-fpm        # أو الوحدة المسماة في install.sh
+# 2) أعد تحميل وحدة الوكيل المحددة فقط (وحدة install.sh نفسها؛ لا إعادة تشغيل
+#    Asterisk ولا php-fpm العام، ولا أي أثر على اتصالات أو حسابات قائمة):
+sudo systemctl reload vodnox-provisioning.service
+sudo systemctl is-active vodnox-provisioning.service   # المتوقّع: active
 ```
 
 **الدليل السلوكي (لا يكفي `grep` وحده):** من واجهة المؤسسة افتح «بوابات الاتصال»
@@ -236,7 +245,8 @@ sudo systemctl reload php*-fpm        # أو الوحدة المسماة في in
 
 ```bash
 sudo deploy/telephony/bin/rollback.sh <archive>   # يستعيد /etc/asterisk والحالة
-#    ثم أعد ملفات الوكيل السابقة إلى /opt/vodnox-telephony/src و: systemctl reload php*-fpm
+#    ثم أعد ملفات الوكيل السابقة إلى /opt/vodnox-telephony/src و:
+sudo systemctl reload vodnox-provisioning.service
 ```
 
 الرجوع آمن بلا إعادة تشغيل: الطلب على مسار غير موجود يعيد 404، فيُبلغ التطبيق

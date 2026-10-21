@@ -220,6 +220,12 @@ class GatewayLineRoutingService
      * id, never a secret), so the dialplan is regenerated from the same rows
      * the preview uses.
      *
+     * A rule whose own destination is unusable still keeps its slot: it is
+     * compiled with the configured fallback when there is one, otherwise with an
+     * empty username, which the agent compiles as "this rule matched and the
+     * call is refused". It is never dropped, because dropping it would let the
+     * call fall through to a lower-priority rule and disagree with resolve().
+     *
      * @return array<string, mixed>
      */
     public function payload(GatewayLineRoute $route): array
@@ -230,31 +236,27 @@ class GatewayLineRoutingService
             'fallbackDestination', 'temporaryForwardDestination', 'organization',
         ]);
 
-        $temporary = $route->temporary_forward_enabled
-            ? $this->effectiveUsername($route->temporaryForwardDestination, $route)
-            : null;
-
         $exceptions = [];
 
         foreach ($route->dateExceptions as $exception) {
-            $username = $this->effectiveUsername($exception->destination, $route);
-
-            if ($username === null) {
-                // An exception that cannot resolve is ignored rather than
-                // silently sending the call somewhere unexpected.
-                continue;
-            }
-
             $exceptions[] = [
                 'starts_on' => $exception->starts_on?->format('Y-m-d'),
                 'ends_on' => $exception->ends_on?->format('Y-m-d'),
-                'destination_username' => $username,
+                // Null means "matched, but neither the exception nor the
+                // fallback is usable": the agent refuses instead of falling
+                // through to weekend/hours/default.
+                'destination_username' => $this->effectiveUsername($exception->destination, $route),
             ];
         }
 
         return [
             'timezone' => $route->timezone(),
-            'temporary_forward' => $temporary !== null ? ['destination_username' => $temporary] : null,
+            // null when the forward is off; an object (possibly with a null
+            // destination) when it is on, so an unusable forward still wins and
+            // is refused instead of being silently skipped.
+            'temporary_forward' => $route->temporary_forward_enabled
+                ? ['destination_username' => $this->effectiveUsername($route->temporaryForwardDestination, $route)]
+                : null,
             'exceptions' => $exceptions,
             'weekend_days' => $route->weekendDays->pluck('day')->map(fn ($day) => (int) $day)->values()->all(),
             'business_hours' => $route->businessHours->map(fn ($window) => [

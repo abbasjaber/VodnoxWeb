@@ -18,6 +18,9 @@ use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenant;
 use Tests\Support\FakeTelephonyGateway;
 use Tests\TestCase;
+use Vodnox\Telephony\Agent;
+
+require_once dirname(__DIR__, 3).'/deploy/telephony/provisioning/src/Agent.php';
 
 /**
  * The numbers & routing workspace, end to end.
@@ -32,6 +35,13 @@ use Tests\TestCase;
  *   - an inclusive dated exception;
  *   - a missing/disabled destination refuses the call with a readable reason
  *     instead of falling through to another tenant or an outbound path;
+ *   - that refusal happens for a *matched* rule too: an unusable temporary
+ *     forward or dated exception keeps its priority and is refused, never
+ *     silently downgraded to a weekly rule (verified against the real
+ *     `Agent::routingDialplan()` output, not a copy of its rules);
+ *   - the generated dialplan converts the clock with the organization timezone
+ *     explicitly, so a media server running on UTC decides the same as the
+ *     Baghdad preview;
  *   - another tenant's extension is refused;
  *   - overlapping rules are refused rather than resolved by "whichever wins";
  *   - saving routing re-provisions the port without rotating its SIP secret;
@@ -167,6 +177,75 @@ class GatewayLineRoutingTest extends TestCase
                 'end_time' => $window['end'],
             ]);
         }
+    }
+
+    /**
+     * Compile a routing payload exactly as the media-server agent does, so the
+     * preview can be compared with the dialplan that really decides the call.
+     *
+     * The real Agent class is loaded and driven (not a re-implementation of its
+     * rules): a copy of the logic here would prove nothing about production.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<int, string>
+     */
+    private function compileDialplan(array $payload): array
+    {
+        $agent = new Agent([
+            'state_dir' => sys_get_temp_dir().'/vodnox-agent-compile',
+            'asterisk' => [
+                'include_dir' => sys_get_temp_dir().'/vodnox-agent-compile/generated',
+                'dialplan_include_dir' => sys_get_temp_dir().'/vodnox-agent-compile/dialplan',
+            ],
+        ]);
+
+        $normalize = new \ReflectionMethod($agent, 'normalizeRouting');
+        $routing = $normalize->invoke($agent, $payload);
+
+        $this->assertIsArray($routing, 'the payload must survive the agent validation');
+
+        $compile = new \ReflectionMethod($agent, 'routingDialplan');
+
+        /** @var array<int, string> $lines */
+        $lines = $compile->invoke($agent, $routing, 30);
+
+        return $lines;
+    }
+
+    /**
+     * The label => target table of the compiled dialplan, as dialled.
+     *
+     * @param  array<int, string>  $lines
+     * @return array<string, string>
+     */
+    private function branchTargets(array $lines): array
+    {
+        $targets = [];
+
+        foreach ($lines as $line) {
+            if (preg_match('/^ same => n\((vdx_[a-z0-9_]+)\),Set\(VDX_TARGET=(.*)\)$/', $line, $matches)) {
+                $targets[$matches[1]] = $matches[2];
+            }
+        }
+
+        return $targets;
+    }
+
+    /**
+     * The position of the first line starting with $prefix, so the compiled
+     * priority order can be asserted.
+     *
+     * @param  array<int, string>  $lines
+     */
+    private function indexOfPrefix(array $lines, string $prefix): int
+    {
+        foreach ($lines as $index => $line) {
+            if (str_starts_with($line, $prefix)) {
+                return $index;
+            }
+        }
+
+        $this->fail('No compiled dialplan line starts with: '.$prefix);
     }
 
     /*
@@ -625,5 +704,180 @@ class GatewayLineRoutingTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('company.numbers.routing.edit', ['gateway' => $foreignDevice, 'line' => $foreignLine]))
             ->assertNotFound();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | The preview and the generated dialplan cannot disagree
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_an_unusable_temporary_forward_is_refused_and_never_downgraded(): void
+    {
+        $device = $this->device();
+        $line = $this->firstLine($device);
+
+        $inHours = $this->extension('1100');
+        $temp = $this->extension('1104');
+
+        $route = $this->routeLineTo($line, $inHours);
+        $route->forceFill([
+            'temporary_forward_enabled' => true,
+            'temporary_forward_extension_id' => $temp->id,
+        ])->save();
+        // A window and a usable default exist: without the fix the call would be
+        // silently downgraded to them instead of being refused.
+        $this->withWindows($route, [['day' => 0, 'start' => '09:00', 'end' => '17:00']]);
+        $temp->forceFill(['status' => 'inactive'])->save();
+
+        $fresh = $this->route($line);
+
+        $result = $this->routing->resolve($fresh, CarbonImmutable::parse('2026-01-04 10:00', 'Asia/Baghdad'));
+        $this->assertSame('none', $result['rule']);
+        $this->assertSame(GatewayLineRoutingService::REASON_DESTINATION_UNAVAILABLE, $result['reason']);
+
+        $payload = $this->routing->payload($fresh);
+
+        // The forward is still ON: it keeps priority even without a target.
+        $this->assertNotNull($payload['temporary_forward']);
+        $this->assertNull($payload['temporary_forward']['destination_username']);
+
+        $lines = $this->compileDialplan($payload);
+
+        $this->assertContains(' same => n,Goto(vdx_temporary)', $lines);
+        // Nothing lower is even compiled, so nothing can be reached.
+        $this->assertNotContains(' same => n,Goto(vdx_default)', $lines);
+
+        $targets = $this->branchTargets($lines);
+        $this->assertSame('', $targets['vdx_temporary']);
+        $this->assertContains(' same => n(vdx_dial),GotoIf($["${VDX_TARGET}" = ""]?vdx_refuse)', $lines);
+        $this->assertContains(' same => n,Hangup(480)', $lines);
+    }
+
+    public function test_an_unusable_dated_exception_is_refused_and_never_downgraded(): void
+    {
+        $device = $this->device();
+        $line = $this->firstLine($device);
+
+        $inHours = $this->extension('1100');
+        $outside = $this->extension('1101');
+        $holiday = $this->extension('1102');
+
+        $route = $this->routeLineTo($line, $inHours);
+        $route->forceFill(['outside_hours_destination_extension_id' => $outside->id])->save();
+        $route->dateExceptions()->create([
+            'starts_on' => '2026-01-04',
+            'ends_on' => '2026-01-04',
+            'destination_extension_id' => $holiday->id,
+        ]);
+        // Sunday has a working window too, so a downgrade would be observable.
+        $this->withWindows($route, [['day' => 0, 'start' => '09:00', 'end' => '17:00']]);
+        $holiday->forceFill(['status' => 'inactive'])->save();
+
+        $fresh = $this->route($line);
+
+        $result = $this->routing->resolve($fresh, CarbonImmutable::parse('2026-01-04 10:00', 'Asia/Baghdad'));
+        $this->assertSame('date_exception', $result['matched_rule']);
+        $this->assertSame('none', $result['rule']);
+        $this->assertSame(GatewayLineRoutingService::REASON_DESTINATION_UNAVAILABLE, $result['reason']);
+
+        $payload = $this->routing->payload($fresh);
+
+        // Kept, not dropped.
+        $this->assertCount(1, $payload['exceptions']);
+        $this->assertNull($payload['exceptions'][0]['destination_username']);
+
+        $lines = $this->compileDialplan($payload);
+
+        $exception = $this->indexOfPrefix($lines, ' same => n,GotoIf($[${VDX_D} >= 20260104');
+        $hours = $this->indexOfPrefix($lines, ' same => n,GotoIf($[(');
+
+        // The exception still wins over the weekly window...
+        $this->assertLessThan($hours, $exception);
+
+        $targets = $this->branchTargets($lines);
+
+        // ...and refuses, while the in-hours rule it shadows stays dialable for
+        // every other day of the year.
+        $this->assertSame('', $targets['vdx_exception_0']);
+        $this->assertSame($inHours->sip_username, $targets['vdx_in_hours']);
+    }
+
+    public function test_a_matched_rule_without_a_destination_uses_the_fallback_before_refusing(): void
+    {
+        $device = $this->device();
+        $line = $this->firstLine($device);
+
+        $inHours = $this->extension('1100');
+        $holiday = $this->extension('1102');
+        $fallback = $this->extension('1110');
+
+        $route = $this->routeLineTo($line, $inHours);
+        $route->forceFill(['fallback_destination_extension_id' => $fallback->id])->save();
+        $route->dateExceptions()->create([
+            'starts_on' => '2026-01-04',
+            'ends_on' => '2026-01-04',
+            'destination_extension_id' => $holiday->id,
+        ]);
+        $holiday->forceFill(['status' => 'inactive'])->save();
+
+        $fresh = $this->route($line);
+
+        $result = $this->routing->resolve($fresh, CarbonImmutable::parse('2026-01-04 10:00', 'Asia/Baghdad'));
+        $this->assertSame('date_exception', $result['matched_rule']);
+        $this->assertSame('fallback', $result['rule']);
+        $this->assertSame($fallback->id, $result['destination_extension_id']);
+
+        $lines = $this->compileDialplan($this->routing->payload($fresh));
+
+        // The compiled exception dials the fallback, exactly like the preview.
+        $this->assertSame($fallback->sip_username, $this->branchTargets($lines)['vdx_exception_0']);
+    }
+
+    public function test_the_generated_dialplan_converts_with_the_organization_timezone(): void
+    {
+        $device = $this->device();
+        $line = $this->firstLine($device);
+        $inHours = $this->extension('1100');
+
+        $route = $this->routeLineTo($line, $inHours);
+        $this->withWindows($route, [['day' => 0, 'start' => '09:00', 'end' => '17:00']]);
+
+        $fresh = $this->route($line);
+
+        // 07:00 UTC is 10:00 in Baghdad: inside the Sunday window.
+        $result = $this->routing->resolve($fresh, CarbonImmutable::parse('2026-01-04 07:00', 'UTC'));
+        $this->assertSame('business_hours', $result['rule']);
+        $this->assertSame('Asia/Baghdad', $result['timezone']);
+        $this->assertSame(0, $result['weekday']);
+
+        // The media server's own PHP runs on UTC while the organization is on
+        // Baghdad — the generated file must not depend on the server zone.
+        $server = date_default_timezone_get();
+        date_default_timezone_set('UTC');
+
+        try {
+            $lines = $this->compileDialplan($this->routing->payload($fresh));
+        } finally {
+            date_default_timezone_set($server);
+        }
+
+        // One sample of the clock, converted with the organization zone.
+        $this->assertContains(' same => n,Set(VDX_NOW=${EPOCH})', $lines);
+        $this->assertContains(' same => n,Set(VDX_TZ=Asia/Baghdad)', $lines);
+        $this->assertContains(' same => n,Set(VDX_W=${STRFTIME(${VDX_NOW},${VDX_TZ},%w)})', $lines);
+        $this->assertContains(' same => n,Set(VDX_T=${STRFTIME(${VDX_NOW},${VDX_TZ},%H%M)})', $lines);
+        $this->assertContains(' same => n,Set(VDX_D=${STRFTIME(${VDX_NOW},${VDX_TZ},%Y%m%d)})', $lines);
+
+        // No lookup may leave the zone empty (which would silently use the
+        // server zone) or re-read the clock on its own.
+        foreach ($lines as $compiled) {
+            $this->assertStringNotContainsString('STRFTIME(${EPOCH},,', $compiled);
+            $this->assertStringNotContainsString('STRFTIME(${VDX_NOW},,%', $compiled);
+        }
+
+        // The compiled window is the same Sunday 09:00-17:00 the preview used.
+        $this->assertContains(' same => n,GotoIf($[(${VDX_W} == 0 & ${VDX_T} >= 0900 & ${VDX_T} < 1700)]?vdx_in_hours)', $lines);
+        $this->assertSame($inHours->sip_username, $this->branchTargets($lines)['vdx_in_hours']);
     }
 }

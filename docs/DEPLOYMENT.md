@@ -142,6 +142,36 @@ php artisan queue:restart
 
 > **ممنوع** استخدام `migrate:fresh` على قاعدة قائمة — تُفقد البيانات.
 
+### 7.1 ترحيلات هذا الإصدار (توجيه الوارد للبوابات)
+
+إصدار «فصل بوابات الاتصال عن الأرقام والتحويل» يضيف ترحيلاً **واحداً إضافياً
+غير مدمر** (إنشاء جداول جديدة فقط، بلا تعديل على جداول قائمة):
+
+```
+2026_10_21_000001_create_gateway_line_routing_tables.php
+```
+
+يُنشئ جداول `gateway_line_routes` و`gateway_line_business_hours` و
+`gateway_line_weekend_days` و`gateway_line_date_exceptions` — أي «وجهة الوارد +
+ساعات العمل + عطلة الأسبوع + الاستثناءات بالتواريخ + التحويل المؤقت» لكل منفذ.
+
+```bash
+php artisan migrate --force
+php artisan migrate:status | grep gateway_line_routing_tables   # المتوقّع: Ran
+```
+
+> **الترتيب إلزامي:** نفّذ `php artisan migrate --force` **قبل** تشغيل عامل
+> الطابور (`queue:restart`) وقبل فتح أي منفذ من الواجهة. الترحيل لا يعتمد على
+> وكيل الوسائط، لكن كود التطبيق الجديد يقرأ هذه الجداول، فتشغيله قبل الترحيل
+> يُظهر أخطاء «جدول غير موجود» عند فتح صفحة الأرقام والتحويل.
+
+**ترتيب النشر الكامل لهذا الإصدار:** `git pull` ← `composer install --no-dev`
+← `php artisan migrate --force` ← `queue:restart`. أما تركيب وكيل الوسائط
+(`1.3.0`) فهو **خطوة مشغّل منفصلة** منفّذة يدوياً على سيرفر الوسائط
+(انظر [`deploy/telephony/README.md`](../deploy/telephony/README.md) §5.1)، وليست
+جزءاً من نشر cPanel. حتى تنفيذها تظهر رسالة «خدمة الربط لا تدعم خطوط البوابة
+بعد» — سلوك صادق مقصود.
+
 ---
 
 ## 8. الإعداد في `config/app.php`
