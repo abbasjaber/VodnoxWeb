@@ -52,8 +52,6 @@ class GatewaySetupGuideController extends Controller
             $this->authorizePermission($request, 'view_gateway_secrets');
         }
 
-        $gateway->load('lines.route.defaultDestination.destination');
-
         $profiles = $this->gateways->profiles();
 
         /*
@@ -67,6 +65,12 @@ class GatewaySetupGuideController extends Controller
          * "PDF" and no 500 page is handed to the browser.
          */
         try {
+            // Build the export from the real routing rows. `defaultDestination`
+            // already resolves to Extension; there is no nested `destination`
+            // relation on Extension, and trying to eager-load one crashes the
+            // export before the failure can be logged.
+            $gateway->load('lines.route.defaultDestination');
+
             $html = view('company.gateway-setup-guide', [
                 'org' => $organization,
                 'gateway' => $gateway,

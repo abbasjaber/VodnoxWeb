@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Extension;
 use App\Models\GatewayDevice;
 use App\Models\GatewayLine;
+use App\Models\GatewayLineRoute;
 use App\Models\Organization;
 use App\Models\Permission;
 use App\Models\TelephonyTechnicalAccount;
@@ -765,7 +766,7 @@ class TelephonyTechnicalSettingsTest extends TestCase
     public function test_the_guide_carries_sip_passwords_only_when_explicitly_requested(): void
     {
         $device = $this->device(model: 'goip-4');
-        $device->load('lines.route.defaultDestination.destination');
+        $device->load('lines.route.defaultDestination');
 
         $secrets = $device->lines->map(fn ($line) => (string) $line->sip_password)->all();
 
@@ -797,6 +798,36 @@ class TelephonyTechnicalSettingsTest extends TestCase
         // enters the guide.
         $this->assertStringNotContainsString($this->password, $safe);
         $this->assertStringNotContainsString($this->password, $withSecrets);
+    }
+
+    public function test_the_setup_guide_exports_a_real_pdf_when_a_port_has_a_default_destination(): void
+    {
+        $device = $this->device(model: 'goip-1');
+        $line = $device->lines()->firstOrFail();
+        $destination = $this->extension($this->organization, '1450');
+
+        GatewayLineRoute::firstOrCreate(
+            ['gateway_line_id' => $line->getKey()],
+            ['organization_id' => $this->organization->getKey()],
+        )->forceFill([
+            'default_destination_extension_id' => $destination->getKey(),
+        ])->save();
+
+        $this->openTechnicalSession();
+
+        foreach ([false, true] as $withPasswords) {
+            $response = $this->actingAs($this->admin)->get(
+                route('company.gateways.setup-guide', $device).($withPasswords ? '?include_passwords=1' : '')
+            );
+
+            $response->assertOk();
+            $response->assertHeader('Content-Type', 'application/pdf');
+
+            $pdf = $response->streamedContent();
+
+            $this->assertStringStartsWith('%PDF-', $pdf);
+            $this->assertStringContainsString('%%EOF', $pdf);
+        }
     }
 
     /**

@@ -26,7 +26,7 @@
 @include('company._assets')
 @include('company._alerts')
 
-<div class="page-head">
+<div class="page-head gateway-page-head">
     <div>
         <h1>{{ __('company.gateways_title') }}</h1>
         <p>{{ __('company.gateways_subtitle') }}</p>
@@ -71,7 +71,7 @@
             ?: ($profiles[$device->model]['label_en'] ?? $device->model)
         );
     @endphp
-    <div class="card">
+    <div class="card gateway-card">
         <div class="device-head">
             <div class="device-title">
                 <h2>{{ $device->label }}</h2>

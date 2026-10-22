@@ -183,10 +183,10 @@
 </section>
 
 @push('styles')
-<link rel="stylesheet" href="{{ asset('assets/vodnox/telephony.css') }}">
+<link rel="stylesheet" href="{{ $assetv('assets/vodnox/telephony.css') }}">
 @endpush
 
 @push('scripts')
-<script src="{{ asset('assets/vodnox/vendor/sip.min.js') }}"></script>
-<script src="{{ asset('assets/vodnox/telephony.js') }}"></script>
+<script src="{{ $assetv('assets/vodnox/vendor/sip.min.js') }}"></script>
+<script src="{{ $assetv('assets/vodnox/telephony.js') }}"></script>
 @endpush

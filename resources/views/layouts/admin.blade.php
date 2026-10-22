@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="{{ app()->getLocale() }}" dir="{{ app()->getLocale() === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
-    <script src="{{ asset('assets/vodnox/theme.js') }}"></script>
+    <script src="{{ $assetv('assets/vodnox/theme.js') }}"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="theme-color" content="#101D35">
     <link rel="icon" type="image/png" href="{{ asset('assets/vodnox/vodnox-app-icon-gold.png') }}">
     <link rel="apple-touch-icon" href="{{ asset('assets/vodnox/vodnox-app-icon-gold.png') }}">
     <title>@yield('title', 'VODNOX') — @lang('vodnox.platform_console')</title>
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/fonts.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/admin.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/theme.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/fonts.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/admin.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/theme.css') }}">
     @stack('styles')
 </head>
 <body>
@@ -57,7 +57,7 @@
 @include('partials.modal')
 <div id="toast" class="app-toast" role="status" aria-live="polite"></div>
 
-<script src="{{ asset('assets/vodnox/admin.js') }}"></script>
+<script src="{{ $assetv('assets/vodnox/admin.js') }}"></script>
 @stack('scripts')
 </body>
 </html>

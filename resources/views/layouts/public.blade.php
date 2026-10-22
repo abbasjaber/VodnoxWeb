@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="{{ app()->getLocale() }}" dir="{{ app()->getLocale() === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
-    <script src="{{ asset('assets/vodnox/theme.js') }}"></script>
+    <script src="{{ $assetv('assets/vodnox/theme.js') }}"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="theme-color" content="#101D35">
@@ -9,10 +9,10 @@
     <link rel="apple-touch-icon" href="{{ asset('assets/vodnox/vodnox-app-icon-gold.png') }}">
     <meta name="description" content="@yield('meta_description', __('vodnox.meta_description'))">
     <title>@yield('title', 'VODNOX')</title>
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/fonts.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/theme.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/website.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/fonts.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/theme.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/website.css') }}">
     <style>
         .site-brand .brand-logo { max-height: 44px; width: auto; display: block; }
         .footer-brand .brand-logo { max-height: 40px; width: auto; display: block; margin-bottom: 12px; }
@@ -28,7 +28,7 @@
 </main>
 @include('partials.public-footer')
 <div id="siteToast" class="site-toast" role="status" aria-live="polite"></div>
-<script src="{{ asset('assets/vodnox/website.js') }}"></script>
+<script src="{{ $assetv('assets/vodnox/website.js') }}"></script>
 @stack('scripts')
 </body>
 </html>

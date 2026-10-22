@@ -7,8 +7,8 @@
     client-side store and DOM nodes that do not exist in the Laravel layout.
 --}}
 @push('styles')
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/crm.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/forms.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/crm.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/forms.css') }}">
 @endpush
 
 <script>document.body.setAttribute('data-forms-role', 'company');</script>

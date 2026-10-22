@@ -1,5 +1,11 @@
 /* Shared palette for the approved login and all three workspaces. */
 .theme-toggle{height:34px;width:34px;display:grid;place-items:center;flex-shrink:0;border:1px solid #dfe6ef;border-radius:9px;background:transparent;color:#5c6a7d;padding:0;transition:background .15s,border-color .15s}.theme-toggle svg{width:17px;height:17px}.theme-toggle:hover{background:#edf2f8;border-color:#cbb68d}.theme-toggle:focus-visible{outline:3px solid #d9a956;outline-offset:3px}.login-tools{display:flex;align-items:center;gap:12px}.login-tools .language{white-space:nowrap}
+html:not([data-theme=dark]){--ink-soft:#243041;--muted:#364152;--placeholder:#536173}
+html:not([data-theme=dark]) :is(.nav-item,.environment,.logout,.language){color:var(--text)}
+html:not([data-theme=dark]) :is(.brand span,.nav-label,.breadcrumb,.profile small,.page-head p,.table-foot,.detail-line dt,.tenant-selector small,.queue-item p,.metric-inline small,.company-info-head p,.hint-cell,.note-plain,.device-meta,.device-fact>small,.guide-option small){color:var(--muted)}
+html:not([data-theme=dark]) .breadcrumb b{color:var(--text)}
+html:not([data-theme=dark]) th{font-weight:500;color:var(--muted)}
+html:not([data-theme=dark]) td{color:var(--text)}
 html[data-theme=dark]{--text:#e8eef8;--ink-soft:#c6d3e6;--muted:#a8b7cc;--placeholder:#94a6c0;--border:#293950;--cloud:#1c2d45;--green:#77cfb0;--red:#e6a1a8;--blue:#a8c5ec;--surface:#132238;--surface-raised:#1b2d46;--dark-bg:#0b1424;--navy:#101d35;--gold:#f7b955}
 html[data-theme=dark] body{background:var(--dark-bg);color:var(--text)}
 html[data-theme=dark] :is(.sidebar,.topbar,.form-panel){background:#101d35;border-color:var(--border)}

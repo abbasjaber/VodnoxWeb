@@ -4,7 +4,7 @@
 @section('crumb', __('portal.agent.reception_title'))
 
 @push('styles')
-<link rel="stylesheet" href="{{ asset('assets/vodnox/reception.css') }}">
+<link rel="stylesheet" href="{{ $assetv('assets/vodnox/reception.css') }}">
 @endpush
 
 @section('content')
@@ -26,5 +26,5 @@
 @endsection
 
 @push('scripts')
-<script src="{{ asset('assets/vodnox/reception.js') }}"></script>
+<script src="{{ $assetv('assets/vodnox/reception.js') }}"></script>
 @endpush

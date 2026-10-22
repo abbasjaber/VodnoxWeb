@@ -5,8 +5,8 @@
     : ($form->title_en ?: $form->title_ar))
 
 @push('styles')
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/crm.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/forms.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/crm.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/forms.css') }}">
 @endpush
 
 @section('content')

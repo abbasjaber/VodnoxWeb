@@ -29,11 +29,18 @@
 .action-group form{display:flex;margin:0}
 .action-group .btn-secondary,.action-group .btn-danger,.action-group .btn-quiet{white-space:nowrap}
 .action-group.danger{margin-inline-start:auto;border-inline-start:1px solid var(--border);padding-inline-start:12px}
+.gateway-page-head h1{font-size:21px}
+.gateway-card .device-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.gateway-card .device-title h2{font-size:18px;line-height:1.5}
+.gateway-card .device-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.gateway-card .action-group{min-width:0}
+.gateway-card .action-group>*{flex:0 0 auto}
+.gateway-card .action-group .btn-secondary,.gateway-card .action-group .btn-danger,.gateway-card .action-group .btn-quiet{min-height:38px;padding:10px 14px}
 .note-plain{color:var(--ink-soft);font-size:9px;line-height:1.9;margin-top:14px}
 .guide-option{display:flex;gap:11px;align-items:flex-start;border:1px solid var(--border);border-radius:9px;padding:13px 15px;background:#fafbfd}
 .guide-option input{margin-top:2px;accent-color:var(--navy);flex-shrink:0}
 .guide-option b{display:block;font-size:10px;font-weight:500;color:var(--text)}
 .guide-option small{display:block;font-size:8px;color:var(--ink-soft);margin-top:6px;line-height:1.9}
 .guide-option.is-off{background:white}
-@media(max-width:1000px){.action-group.danger{margin-inline-start:0;border-inline-start:0;padding-inline-start:0;border-top:1px solid var(--border);padding-top:12px;width:100%}}
-@media(max-width:700px){.tech-bar{gap:10px}.tech-fact{flex-basis:calc(50% - 8px)}.tech-help[open] summary{width:100%}.tech-bar-end{margin-inline-start:0;width:100%}.tech-bar-end .btn-quiet{width:100%;justify-content:center}.device-head{padding:18px 18px 0;flex-wrap:wrap}.device-facts{padding-inline:18px}.device-fact{flex-basis:100%}.device-actions{padding:14px 18px 18px}.action-group{width:100%}.action-group form{flex:1}.action-group .btn-secondary,.action-group .btn-danger,.action-group .btn-quiet{flex:1;justify-content:center}}
+@media(max-width:1000px){.action-group.danger{margin-inline-start:0;border-inline-start:0;padding-inline-start:0;border-top:1px solid var(--border);padding-top:12px;width:100%}.gateway-card .device-actions{grid-template-columns:1fr}.gateway-card .action-group.danger{width:100%}}
+@media(max-width:700px){.tech-bar{gap:10px}.tech-fact{flex-basis:calc(50% - 8px)}.tech-help[open] summary{width:100%}.tech-bar-end{margin-inline-start:0;width:100%}.tech-bar-end .btn-quiet{width:100%;justify-content:center}.device-head{padding:18px 18px 0;flex-wrap:wrap}.device-facts{padding-inline:18px}.device-fact{flex-basis:100%}.device-actions{padding:14px 18px 18px}.action-group{width:100%}.action-group form{flex:1}.action-group .btn-secondary,.action-group .btn-danger,.action-group .btn-quiet{flex:1;justify-content:center}.gateway-page-head h1{font-size:18px}.gateway-card .device-head{grid-template-columns:1fr}.gateway-card .device-title h2{font-size:16px}.gateway-card .device-actions{grid-template-columns:1fr}.gateway-card .action-group>*{flex:1 1 auto}}

@@ -4,7 +4,7 @@
     drives the customer profile tabs, the delete confirmations and the flash toast.
 --}}
 @push('styles')
-    <link rel="stylesheet" href="{{ asset('assets/vodnox/crm.css') }}">
+    <link rel="stylesheet" href="{{ $assetv('assets/vodnox/crm.css') }}">
 @endpush
 
 @push('scripts')

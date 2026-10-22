@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\View;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -54,6 +55,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        View::share('assetv', static function (string $path): string {
+            $fullPath = public_path($path);
+            $separator = str_contains($path, '?') ? '&' : '?';
+            $version = is_file($fullPath) ? filemtime($fullPath) : time();
+
+            return asset($path).$separator.'v='.$version;
+        });
+
         $this->configureRateLimiters();
     }
 
