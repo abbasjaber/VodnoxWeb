@@ -9,8 +9,12 @@ use App\Services\AuditService;
 use App\Services\Telephony\GatewayProvisioningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
+use RuntimeException;
+use Throwable;
 
 /**
  * The printable wiring guide of one GSM gateway device.
@@ -52,16 +56,62 @@ class GatewaySetupGuideController extends Controller
 
         $profiles = $this->gateways->profiles();
 
-        $html = view('company.gateway-setup-guide', [
-            'org' => $organization,
-            'gateway' => $gateway,
-            'serverSettings' => $this->gateways->serverSettings(),
-            'profile' => $profiles[$gateway->model] ?? null,
-            'includePasswords' => $includePasswords,
-            'exportedAt' => now(),
-        ])->render();
+        /*
+         * The export is the one place that depends on a runtime the CI job
+         * cannot prove: the mPDF package must actually exist in the deployed
+         * `vendor/` tree, its Arabic font must be readable, and `storage/app`
+         * must be writable for its scratch files. Any failure here is therefore
+         * reported with the real exception, its file and line, and a reference
+         * the operator can grep — never swallowed and never answered with a
+         * false success. The response stays a plain error, so no half-written
+         * "PDF" and no 500 page is handed to the browser.
+         */
+        try {
+            $html = view('company.gateway-setup-guide', [
+                'org' => $organization,
+                'gateway' => $gateway,
+                'serverSettings' => $this->gateways->serverSettings(),
+                'profile' => $profiles[$gateway->model] ?? null,
+                'includePasswords' => $includePasswords,
+                'exportedAt' => now(),
+            ])->render();
 
-        $pdf = $this->renderPdf($html);
+            $pdf = $this->renderPdf($html);
+        } catch (Throwable $exception) {
+            $reference = 'SG-'.strtoupper(Str::random(8));
+
+            Log::error('gateway.setup_guide_failed '.$reference, [
+                'reference' => $reference,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+                'file' => $exception->getFile(),
+                'line' => $exception->getLine(),
+                // File/line/function of each frame WITHOUT its arguments: the
+                // arguments of this call chain carry the rendered HTML, and an
+                // export that includes SIP passwords must never put them in a
+                // log file.
+                'trace' => collect($exception->getTrace())->take(25)->map(fn (array $frame): string => sprintf(
+                    '%s%s%s() at %s:%s',
+                    $frame['class'] ?? '',
+                    $frame['type'] ?? '',
+                    $frame['function'] ?? '',
+                    $frame['file'] ?? '-',
+                    $frame['line'] ?? '-',
+                ))->all(),
+                'gateway_id' => $gateway->getKey(),
+                'organization_id' => $organization->getKey(),
+                'include_passwords' => $includePasswords,
+                'php_version' => PHP_VERSION,
+                'mpdf_available' => class_exists(Mpdf::class),
+                'mpdf_path' => base_path('vendor/mpdf/mpdf/src/Mpdf.php'),
+                'mpdf_path_exists' => File::exists(base_path('vendor/mpdf/mpdf/src/Mpdf.php')),
+                'temp_dir' => $this->tempDir(),
+                'temp_dir_writable' => File::isWritable($this->tempDir()),
+            ]);
+
+            return redirect()->route('company.gateways.index')
+                ->with('error', __('company.gateway_guide_failed', ['reference' => $reference]));
+        }
 
         // The filename carries only the device id and the export date.
         $filename = sprintf('vodnox-setup-guide-%d-%s.pdf', $gateway->getKey(), now()->format('Ymd'));
@@ -100,8 +150,18 @@ class GatewaySetupGuideController extends Controller
         // mPDF needs a writable scratch directory for its own temporary files;
         // it lives in the private storage tree, never in public/. mPDF removes
         // its temporary files itself after Output().
-        $tempDir = storage_path('app/mpdf');
+        $tempDir = $this->tempDir();
         File::ensureDirectoryExists($tempDir);
+
+        // A deployed `vendor/` that never received the package fails here with
+        // the class name only. Naming the missing dependency and the exact
+        // command keeps the operator's log actionable.
+        if (! class_exists(Mpdf::class)) {
+            throw new RuntimeException(
+                'mPDF is not autoloadable. Run "composer install --no-dev --optimize-autoloader" '
+                .'in the application root so vendor/mpdf/mpdf reaches the server.'
+            );
+        }
 
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
@@ -124,5 +184,11 @@ class GatewaySetupGuideController extends Controller
         $mpdf->WriteHTML($html);
 
         return (string) $mpdf->Output('', Destination::STRING_RETURN);
+    }
+
+    /** The private scratch directory mPDF is allowed to write into. */
+    private function tempDir(): string
+    {
+        return storage_path('app/mpdf');
     }
 }

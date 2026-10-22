@@ -1,6 +1,6 @@
 /* Shared palette for the approved login and all three workspaces. */
-.theme-toggle{height:34px;width:34px;display:grid;place-items:center;flex-shrink:0;border:1px solid #dfe6ef;border-radius:9px;background:transparent;color:#7c8da5;padding:0;transition:background .15s,border-color .15s}.theme-toggle svg{width:17px;height:17px}.theme-toggle:hover{background:#edf2f8;border-color:#cbb68d}.theme-toggle:focus-visible{outline:3px solid #d9a956;outline-offset:3px}.login-tools{display:flex;align-items:center;gap:12px}.login-tools .language{white-space:nowrap}
-html[data-theme=dark]{--text:#e8eef8;--muted:#a8b7cc;--border:#293950;--cloud:#1c2d45;--green:#77cfb0;--red:#e6a1a8;--blue:#a8c5ec;--surface:#132238;--surface-raised:#1b2d46;--dark-bg:#0b1424;--navy:#101d35;--gold:#f7b955}
+.theme-toggle{height:34px;width:34px;display:grid;place-items:center;flex-shrink:0;border:1px solid #dfe6ef;border-radius:9px;background:transparent;color:#5c6a7d;padding:0;transition:background .15s,border-color .15s}.theme-toggle svg{width:17px;height:17px}.theme-toggle:hover{background:#edf2f8;border-color:#cbb68d}.theme-toggle:focus-visible{outline:3px solid #d9a956;outline-offset:3px}.login-tools{display:flex;align-items:center;gap:12px}.login-tools .language{white-space:nowrap}
+html[data-theme=dark]{--text:#e8eef8;--ink-soft:#c6d3e6;--muted:#a8b7cc;--placeholder:#94a6c0;--border:#293950;--cloud:#1c2d45;--green:#77cfb0;--red:#e6a1a8;--blue:#a8c5ec;--surface:#132238;--surface-raised:#1b2d46;--dark-bg:#0b1424;--navy:#101d35;--gold:#f7b955}
 html[data-theme=dark] body{background:var(--dark-bg);color:var(--text)}
 html[data-theme=dark] :is(.sidebar,.topbar,.form-panel){background:#101d35;border-color:var(--border)}
 html[data-theme=dark] :is(.card,.stat,.plan-card,.service,.account-header,.quick-action,.main-note,.dialer-card,.mini-stat,.contact-card,.personal-note,dialog){background:var(--surface);border-color:var(--border);color:var(--text)}
@@ -97,6 +97,17 @@ html[data-theme=dark] .call-window .call-clock{color:var(--gold)}
 html[data-theme=dark] dialog::backdrop{background:#040a16b0}
 html[data-theme=dark] .notification-dot{border-color:#101d35}
 html[data-theme=dark] .form-panel h1{color:#edf3fc}
+html[data-theme=dark] :is(.tech-bar,.device-fact,.guide-option){background:#192b43;border-color:#2b3d57}
+html[data-theme=dark] .tech-fact b{color:#eaeff8}
+html[data-theme=dark] :is(.tech-fact small,.tech-help p,.note-plain,.device-meta,.device-fact>small,.guide-option small){color:#baccdf}
+html[data-theme=dark] .tech-help summary{border-color:#33465f;color:#c3d2e6}
+html[data-theme=dark] .tech-help summary:hover{border-color:#ab8c57;color:#ffe0a4}
+html[data-theme=dark] .tech-help[open] summary{border-color:#ab8c57;color:#f0f5fd}
+html[data-theme=dark] .tech-bar-end .btn-quiet{border-color:#33465f;color:#c9d7ea}
+html[data-theme=dark] .tech-bar-end .btn-quiet:hover{background:#21344e;color:#ffe0a4}
+html[data-theme=dark] :is(.action-group.danger,.device-fact){border-color:#2b3d57}
+html[data-theme=dark] .port-stat em{color:#a8b7cc}
+html[data-theme=dark] .port-stat b{color:#eaeff8}
 @media(max-width:760px){.login-tools{gap:8px}.theme-toggle{width:31px;height:31px}.login-tools .language{padding-inline:10px;font-size:10px}}
 @media(max-width:700px){.top-actions{gap:9px}}
 @media(max-width:480px){.panel-top{gap:10px}.panel-top .logo{width:120px}.login-tools .language{font-size:9px}.login-tools{gap:7px}}

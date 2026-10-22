@@ -84,7 +84,11 @@
             title.textContent = opener.getAttribute('data-company-title') || '';
             body.innerHTML = template.innerHTML;
             form.setAttribute('action', opener.getAttribute('data-company-action') || '');
-            form.setAttribute('method', 'post');
+            /* Most dialogs post, but a read-only dialog (the setup-guide
+               download) asks for GET so the export stays a plain, cacheable-
+               never link with no request body. The attribute is therefore an
+               explicit choice and defaults to post. */
+            form.setAttribute('method', (opener.getAttribute('data-company-method') || 'post').toLowerCase());
             if (submit && opener.getAttribute('data-company-submit')) {
                 submit.textContent = opener.getAttribute('data-company-submit');
             }

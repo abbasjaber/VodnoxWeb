@@ -35,34 +35,21 @@
         <p>{{ __('company.gateway_settings_subtitle') }}</p>
     </div>
     <div class="head-actions">
-        <form method="GET" action="{{ route('company.gateways.setup-guide', $gateway) }}">
-            @if ($canViewSecret)
-                <label class="section-note" title="{{ __('company.gateway_guide_include_passwords_hint') }}">
-                    <input type="checkbox" name="include_passwords" value="1">
-                    {{ __('company.gateway_guide_include_passwords') }}
-                </label>
-            @endif
-            <button type="submit" class="btn-primary">{{ __('company.gateway_guide_download') }}</button>
-        </form>
+        <button type="button" class="btn-primary"
+                data-company-modal
+                data-company-method="get"
+                data-company-title="{{ __('company.gateway_guide_dialog_title') }}"
+                data-company-action="{{ route('company.gateways.setup-guide', $gateway) }}"
+                data-company-submit="{{ __('company.gateway_guide_download_short') }}"
+                data-company-template="tpl-gateway-guide">{{ __('company.gateway_guide_download') }}</button>
         <a class="btn-secondary" href="{{ route('company.gateways.index') }}">{{ __('company.back') }}</a>
     </div>
 </div>
 
-{{--
-    Session banner: this whole page is only reachable inside a live technical
-    session. The organization and the shared technical account are shown
-    plainly, together with the way out of the session.
---}}
-<div class="section-note" role="status">
-    <span class="status active">{{ __('telephony_technical.session_badge') }}</span>
-    · {{ __('company.gateway_session_org') }}: <b>{{ $org->name_ar ?? $org->name_en }}</b>
-    · {{ __('company.gateway_session_account') }}: <b class="code-note">{{ auth('technical')->user()?->username }}</b>
-</div>
-<p class="section-note">{{ __('company.gateway_session_note') }}</p>
-<p class="section-note">{{ __('company.gateway_guide_note') }}</p>
+@include('company._technical-bar')
 
 @if (! empty($profile['notes_'.app()->getLocale()]))
-    <div class="section-note">{{ __($profile['notes_'.app()->getLocale()]) }}</div>
+    <p class="note-plain">{{ __($profile['notes_'.app()->getLocale()]) }}</p>
 @endif
 
 @unless ($supportsRouting)
@@ -135,7 +122,7 @@
             </tbody>
         </table>
     </div>
-    <p class="section-note">{{ __('company.gateway_port_settings_hint') }}</p>
+    <p class="note-plain">{{ __('company.gateway_port_settings_hint') }}</p>
 </div>
 
 <div class="card">
@@ -160,10 +147,26 @@
             </tbody>
         </table>
     </div>
-    <p class="section-note">{{ __('company.gateway_guide_rtp_note') }}</p>
-    <p class="section-note">{{ __('company.gateway_guide_voip_flag') }}</p>
-    <p class="section-note">{{ __('company.gateway_guide_fortigate') }}</p>
+    <p class="note-plain">{{ __('company.gateway_guide_rtp_note') }}</p>
+    <p class="note-plain">{{ __('company.gateway_guide_voip_flag') }}</p>
+    <p class="note-plain">{{ __('company.gateway_guide_fortigate') }}</p>
 </div>
+
+{{-- The same small setup-guide dialog used on the devices page: the
+     include-passwords option is unchecked by default and the download is a
+     plain GET to the export route. --}}
+<template id="tpl-gateway-guide">
+    @if ($canViewSecret)
+        <label class="guide-option is-off">
+            <input type="checkbox" name="include_passwords" value="1">
+            <span>
+                <b>{{ __('company.gateway_guide_include_passwords') }}</b>
+                <small>{{ __('company.gateway_guide_include_passwords_hint') }}</small>
+            </span>
+        </label>
+    @endif
+    <p class="note-plain">{{ __('company.gateway_guide_note') }}</p>
+</template>
 @endsection
 
 @push('scripts')

@@ -206,3 +206,53 @@ curl -s https://<domain>/api/v1/health
 
 النشر لا يتطلّب مجلد `VODNOX-Full-Handoff/` إطلاقاً؛ يمكن حذفه بأمان.
 راجع [ATTACHMENT_INDEPENDENCE_REPORT.md](../ATTACHMENT_INDEPENDENCE_REPORT.md).
+
+---
+
+## 11. اعتماديات Composer والـ`vendor/` على cPanel
+
+**قاعدة أساسية:** ملفات `vendor/**` **مستثناة** من الرفع عبر FTP في
+`.github/workflows/main.yml`. لذلك أي اعتمادية جديدة (مثل `mpdf/mpdf` المستخدم
+في دليل الربط PDF) **لا تصل إلى cPanel بالرفع**، حتى لو كان CI أخضر. نجاح
+`composer install` في CI يثبت أن `composer.lock` سليم فقط، ولا يثبت أن
+`vendor/` على السيرفر يحتوي الحزمة.
+
+### 11.1 بعد كل إصدار يضيف أو يحدّث اعتمادية
+
+نفّذ على cPanel (Terminal أو SSH) من جذر المشروع:
+
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan config:cache && php artisan route:cache && php artisan view:cache
+php artisan queue:restart
+```
+
+### 11.2 تحقق أن mPDF وصل فعلاً
+
+```bash
+php -r "require 'vendor/autoload.php'; var_dump(class_exists('Mpdf\\Mpdf'));"
+# المتوقع: bool(true)
+
+ls -d vendor/mpdf/mpdf/ttfonts
+# المتوقع: وجود المجلد مع خطوط XB Riyaz العربية
+```
+
+### 11.3 إن فشل تصدير دليل الربط
+
+التصدير يلتقط أي استثناء ويسجّله بمرجع `SG-XXXXXXXX` ويعرضه للمستخدم بدل
+صفحة 500. لاستخراج آخر فشل تصدير من سجل الإنتاج **دون طباعة `.env` أو أي
+كلمة مرور**:
+
+```bash
+# المرجع الظاهر للمستخدم في رسالة الخطأ
+php -r '$l=file_get_contents("storage/logs/laravel.log"); preg_match_all("/gateway\.setup_guide_failed (SG-[A-Z0-9]{8})/",$l,$m); echo end($m[1]) ?: "none","\n";'
+
+# آخر سطر استثناء مع نوع الاستثناء والملف والسطر (بلا trace وبلا أسرار)
+grep -a "gateway.setup_guide_failed" storage/logs/laravel.log | tail -n 1
+
+# الحقائق التشخيصية المسجّلة (mpdf_available / temp_dir_writable / php_version)
+grep -a -A 3 "gateway.setup_guide_failed" storage/logs/laravel.log | tail -n 12
+```
+
+السجل لا يحتوي أبداً على `trace` بالوسائط (Args)، لذلك لا تتسرّب كلمات مرور
+SIP ولا حساب المؤسسة ولا كلمة مرور الدخول الفني.

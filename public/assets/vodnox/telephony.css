@@ -5,7 +5,7 @@
  * tokens.
  */
 .phone-card{
-  --rx-bg:#f5f7fa;--rx-card:#fff;--rx-ink:#172842;--rx-muted:#687b94;--rx-line:#e4eaf2;--rx-soft:#f7f9fc;--rx-green:#267b61;--rx-red:#b74755;--rx-gold:#f7b955;
+  --rx-bg:#f5f7fa;--rx-card:#fff;--rx-ink:#172842;--rx-muted:#5c6a7d;--rx-line:#e4eaf2;--rx-soft:#f7f9fc;--rx-green:#267b61;--rx-red:#b74755;--rx-gold:#f7b955;
   margin-bottom:20px;
 }
 html[data-theme=dark] .phone-card{

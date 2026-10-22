@@ -40,25 +40,16 @@
                     data-company-submit="{{ __('company.save') }}"
                     data-company-template="tpl-gateway-create">{{ __('company.gateway_new') }}</button>
         @endif
-        <form method="POST" action="{{ route('company.telephony-technical.logout') }}">
-            @csrf
-            <button type="submit" class="btn-quiet">{{ __('telephony_technical.session_end') }}</button>
-        </form>
     </div>
 </div>
 
-{{--
-    Session banner: the page is only ever rendered inside a live technical
-    session, so the organization and the shared technical account are shown
-    plainly, together with the way out of the session.
---}}
-<div class="section-note" role="status">
-    <span class="status active">{{ __('telephony_technical.session_badge') }}</span>
-    · {{ __('company.gateway_session_org') }}: <b>{{ $org->name_ar ?? $org->name_en }}</b>
-    · {{ __('company.gateway_session_account') }}: <b class="code-note">{{ auth('technical')->user()?->username }}</b>
-</div>
-<p class="section-note">{{ __('company.gateway_session_note') }}</p>
+@include('company._technical-bar')
 
+{{--
+    Only states that need the operator's attention keep a coloured note: an
+    agent too old for gateway or routing support, and a workspace running
+    against the simulation instead of the live agent.
+--}}
 @unless ($supportsGateways)
     <div class="section-note" role="alert">{{ __('company.gateway_agent_old') }}</div>
 @endunless
@@ -71,8 +62,6 @@
     <div class="section-note">{{ __('company.gateway_simulated') }}</div>
 @endif
 
-<div class="section-note">{{ __('company.gateway_separation_note') }}</div>
-
 @forelse ($devices as $device)
     @php
         $used = $device->usedLinesCount();
@@ -83,54 +72,70 @@
         );
     @endphp
     <div class="card">
-        <div class="card-head">
-            <div>
+        <div class="device-head">
+            <div class="device-title">
                 <h2>{{ $device->label }}</h2>
-                <p>
+                <p class="device-meta">
                     {{ $profileLabel }}
                     @if ($device->firmware) · {{ $device->firmware }} @endif
-                    · <span class="status {{ $device->enabled ? 'active' : 'inactive' }}">{{ $device->enabled ? __('company.gateway_enabled') : __('company.gateway_disabled') }}</span>
-                </p>
-                <p>
-                    <span class="status {{ $device->provisioning_status }}">{{ __('company.gateway_provisioning_state') }}: {{ __('company.gateway_provisioning_'.($device->provisioning_status ?: 'pending')) }}</span>
-                    · <span class="status {{ $device->registrationLabel() }}">{{ __('company.gateway_registration_state') }}: {{ __('company.gateway_registration_'.$device->registrationLabel()) }}</span>
-                </p>
-                <p class="section-note">
-                    {{ __('company.gateway_ports_used') }}: {{ $used }} / {{ $device->max_lines }}
-                    · {{ __('company.gateway_ports_available') }}: {{ $available }}
                 </p>
             </div>
-            <div class="table-actions">
-                <a class="row-link" href="{{ route('company.gateways.settings', $device) }}">{{ __('company.gateway_settings_link') }}</a>
-                <form method="GET" action="{{ route('company.gateways.setup-guide', $device) }}">
-                    @if ($canViewSecret)
-                        <label class="section-note" title="{{ __('company.gateway_guide_include_passwords_hint') }}">
-                            <input type="checkbox" name="include_passwords" value="1">
-                            {{ __('company.gateway_guide_include_passwords') }}
-                        </label>
-                    @endif
-                    <button type="submit" class="row-link">{{ __('company.gateway_guide_download') }}</button>
-                </form>
+            <span class="status {{ $device->enabled ? 'active' : 'inactive' }}">{{ $device->enabled ? __('company.gateway_enabled') : __('company.gateway_disabled') }}</span>
+        </div>
+
+        {{-- Provisioning, registration and the port count on one aligned row. --}}
+        <div class="device-facts">
+            <span class="device-fact">
+                <small>{{ __('company.gateway_provisioning_state') }}</small>
+                <span class="status {{ $device->provisioning_status }}">{{ __('company.gateway_provisioning_'.($device->provisioning_status ?: 'pending')) }}</span>
+            </span>
+            <span class="device-fact">
+                <small>{{ __('company.gateway_registration_state') }}</small>
+                <span class="status {{ $device->registrationLabel() }}">{{ __('company.gateway_registration_'.$device->registrationLabel()) }}</span>
+            </span>
+            <span class="device-fact port-stat">
+                <small>{{ __('company.gateway_ports_used') }}</small>
+                <b>{{ $used }} / {{ $device->max_lines }}</b>
+                <em>{{ __('company.gateway_ports_available') }}: {{ $available }}</em>
+            </span>
+        </div>
+
+        {{-- Everyday actions; disabling and deleting sit apart in their own
+             group so they are never clicked by accident. --}}
+        <div class="device-actions">
+            <div class="action-group">
+                <a class="btn-secondary btn-sm" href="{{ route('company.gateways.settings', $device) }}">{{ __('company.gateway_settings_link') }}</a>
+                <button type="button" class="btn-secondary btn-sm"
+                        data-company-modal
+                        data-company-method="get"
+                        data-company-title="{{ __('company.gateway_guide_dialog_title') }}"
+                        data-company-action="{{ route('company.gateways.setup-guide', $device) }}"
+                        data-company-submit="{{ __('company.gateway_guide_download_short') }}"
+                        data-company-template="tpl-gateway-guide">{{ __('company.gateway_guide_download') }}</button>
                 <form method="POST" action="{{ route('company.gateways.refresh', $device) }}">
                     @csrf
-                    <button type="submit" class="row-link">{{ __('company.gateway_refresh_status') }}</button>
+                    <button type="submit" class="btn-secondary btn-sm">{{ __('company.gateway_refresh_status') }}</button>
                 </form>
                 @if ($canManage)
                     <form method="POST" action="{{ route('company.gateways.retry', $device) }}">
                         @csrf
-                        <button type="submit" class="row-link">{{ __('company.gateway_retry') }}</button>
+                        <button type="submit" class="btn-secondary btn-sm">{{ __('company.gateway_retry') }}</button>
                     </form>
+                @endif
+            </div>
+            @if ($canManage)
+                <div class="action-group danger">
                     <form method="POST" action="{{ route('company.gateways.toggle', $device) }}">
                         @csrf
-                        <button type="submit" class="row-link">{{ $device->enabled ? __('company.gateway_disable') : __('company.gateway_enable') }}</button>
+                        <button type="submit" class="btn-secondary btn-sm">{{ $device->enabled ? __('company.gateway_disable') : __('company.gateway_enable') }}</button>
                     </form>
                     <form method="POST" action="{{ route('company.gateways.destroy', $device) }}" data-confirm="{{ __('company.confirm_delete') }}">
                         @csrf
                         @method('DELETE')
-                        <button type="submit" class="row-link">{{ __('company.delete') }}</button>
+                        <button type="submit" class="btn-danger btn-sm">{{ __('company.delete') }}</button>
                     </form>
-                @endif
-            </div>
+                </div>
+            @endif
         </div>
 
         <div class="table-wrap">
@@ -213,7 +218,7 @@
                     <option value="{{ $key }}" data-lines="{{ (int) ($profile['lines'] ?? 1) }}" @selected(old('model') === $key)>{{ __(($profile['label_'.app()->getLocale()] ?? null) ?: ($profile['label_en'] ?? $key)) }}</option>
                 @endforeach
             </select>
-            <small class="section-note">
+            <small class="field-help">
                 @foreach ($profiles as $key => $profile)
                     @if (! empty($profile['notes_'.app()->getLocale()]))
                         <span data-gateway-note="{{ $key }}" hidden>{{ __($profile['notes_'.app()->getLocale()]) }}</span>
@@ -223,7 +228,7 @@
         </div>
     </div>
 
-    <p class="section-note">{{ __('company.gateway_ports_hint') }}</p>
+    <p class="note-plain">{{ __('company.gateway_ports_hint') }}</p>
     <div id="gw-lines" data-gateway-lines>
         @for ($index = 0; $index < $maxLines; $index++)
             <div class="form-grid" data-company-row>
@@ -243,7 +248,26 @@
         </div>
     </details>
 
-    <p class="section-note">{{ __('company.gateway_after_create_note') }}</p>
+    <p class="note-plain">{{ __('company.gateway_after_create_note') }}</p>
+</template>
+
+{{--
+    The setup-guide dialog: one small window with the include-passwords option
+    (unchecked by default) and a clear download button. The dialog posts
+    nothing — it is a plain GET to the export route, so the file is streamed
+    straight back and never cached.
+--}}
+<template id="tpl-gateway-guide">
+    @if ($canViewSecret)
+        <label class="guide-option is-off">
+            <input type="checkbox" name="include_passwords" value="1">
+            <span>
+                <b>{{ __('company.gateway_guide_include_passwords') }}</b>
+                <small>{{ __('company.gateway_guide_include_passwords_hint') }}</small>
+            </span>
+        </label>
+    @endif
+    <p class="note-plain">{{ __('company.gateway_guide_note') }}</p>
 </template>
 
 @foreach ($devices as $device)
@@ -259,7 +283,7 @@
                     <input id="gle{{ $line->id }}-enabled" type="checkbox" name="enabled" value="1" @checked($line->enabled)>
                 </div>
             </div>
-            <p class="section-note">{{ __('company.gateway_port_in_use_hint') }}</p>
+            <p class="note-plain">{{ __('company.gateway_port_in_use_hint') }}</p>
         </template>
     @endforeach
 @endforeach

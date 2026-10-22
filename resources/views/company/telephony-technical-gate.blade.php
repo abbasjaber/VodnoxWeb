@@ -54,13 +54,13 @@
                     <label for="tech-username">{{ __('telephony_technical.gate_username') }}</label>
                     <input id="tech-username" type="text" name="username" value="{{ old('username') }}"
                            autocomplete="off" autocapitalize="none" spellcheck="false" required>
-                    @error('username')<small class="section-note" role="alert">{{ $message }}</small>@enderror
+                    @error('username')<small class="field-error" role="alert">{{ $message }}</small>@enderror
                 </div>
                 <div class="form-field">
                     <label for="tech-password">{{ __('telephony_technical.gate_password') }}</label>
                     <input id="tech-password" type="password" name="password" value=""
                            autocomplete="current-password" required>
-                    @error('password')<small class="section-note" role="alert">{{ $message }}</small>@enderror
+                    @error('password')<small class="field-error" role="alert">{{ $message }}</small>@enderror
                 </div>
             </div>
             <div class="head-actions">
@@ -69,7 +69,14 @@
         </form>
     @endif
 
-    <p class="section-note">{{ __('telephony_technical.gate_separation') }}</p>
-    <p class="section-note">{{ __('telephony_technical.gate_no_ui_protection') }}</p>
+    {{-- How the technical account relates to the organization account, kept as
+         a foldable help line instead of two permanent coloured banners. --}}
+    <div class="settings-body">
+        <details class="tech-help">
+            <summary>{{ __('telephony_technical.gate_help_toggle') }}</summary>
+            <p>{{ __('telephony_technical.gate_separation') }}</p>
+            <p>{{ __('telephony_technical.gate_no_ui_protection') }}</p>
+        </details>
+    </div>
 </div>
 @endsection

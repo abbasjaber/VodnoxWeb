@@ -292,11 +292,15 @@ return [
     'gateway_session_org' => 'Organization',
     'gateway_session_account' => 'Technical account',
     'gateway_session_note' => 'You are inside a technical support session. Every reveal of SIP data and every device change is recorded in the activity log.',
+    'gateway_help_toggle' => 'What is this section for?',
     'gateway_guide_download' => 'Download setup guide',
+    'gateway_guide_dialog_title' => 'Download the setup guide',
+    'gateway_guide_download_short' => 'Download guide',
     'gateway_guide_include_passwords' => 'Include SIP passwords',
     'gateway_guide_include_passwords_hint' => 'Off by default, and requires the technical secret-reveal permission. It uses the current passwords and creates or rotates none.',
     'gateway_guide_secrets_warning' => 'The copy that includes passwords contains real secrets and is handed to the authorised engineer only. Rotating the SIP credentials makes the previous copy stale.',
     'gateway_guide_downloaded' => 'The setup guide was generated and downloaded.',
+    'gateway_guide_failed' => 'The setup guide could not be generated right now. Report reference :reference to support.',
     'gateway_guide_note' => 'The guide is built from the device\'s real data inside the technical session, and never contains the technical sign-in password, the organization account or any server service key.',
 
     // Gateway port inbound routing (Numbers & routing section)

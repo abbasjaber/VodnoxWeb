@@ -15,8 +15,10 @@ use App\Services\Telephony\GatewayProvisioningService;
 use App\Services\Telephony\TechnicalSessionService;
 use App\Services\Telephony\TelephonyTechnicalAccountService;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\Concerns\BuildsTenant;
 use Tests\Support\FakeTelephonyGateway;
 use Tests\TestCase;
@@ -150,11 +152,23 @@ class TelephonyTechnicalSettingsTest extends TestCase
     {
         $organization ??= $this->organization;
 
+        $ports = (int) (config("integrations.telephony.gateway_profiles.{$model}.lines") ?: 1);
+
+        $lines = [];
+
+        for ($index = 1; $index <= $ports; $index++) {
+            $lines[] = [
+                'label' => 'SIM '.$index,
+                'sim_number' => '0770'.($ports > 1 ? $index : ''),
+                'enabled' => true,
+            ];
+        }
+
         return $this->gateways->createDevice(
             $organization,
             $this->admin->id,
             ['label' => 'GoIP '.$organization->id, 'model' => $model],
-            [['label' => 'SIM 1', 'sim_number' => '0770', 'enabled' => true]],
+            $lines,
         );
     }
 
@@ -666,6 +680,173 @@ class TelephonyTechnicalSettingsTest extends TestCase
             0,
             AuditLog::query()->where('action', 'gateway.setup_guide_downloaded')
                 ->where('new_values->include_passwords', true)->count(),
+        );
+    }
+
+    /**
+     * A live technical session, and the permission to reveal secrets, still
+     * never reach across organizations: the guide of a device that belongs to
+     * another organization is not found.
+     */
+    public function test_the_setup_guide_never_crosses_the_organization_boundary(): void
+    {
+        $other = $this->organization();
+        $foreignDevice = $this->device($other, 'goip-1');
+
+        $this->openTechnicalSession();
+
+        $this->actingAs($this->admin)
+            ->get(route('company.gateways.setup-guide', $foreignDevice))
+            ->assertNotFound();
+
+        $this->actingAs($this->admin)
+            ->get(route('company.gateways.setup-guide', $foreignDevice).'?include_passwords=1')
+            ->assertNotFound();
+
+        $this->assertSame(
+            0,
+            AuditLog::query()->where('action', 'gateway.setup_guide_downloaded')->count(),
+        );
+    }
+
+    /**
+     * The download must be a real, complete PDF file — not an HTML error page
+     * carrying a PDF content type — for a single-port and a multi-port device,
+     * in Arabic and English, with and without the passwords.
+     */
+    public function test_the_download_is_a_real_pdf_for_every_device_and_language(): void
+    {
+        $single = $this->device(model: 'goip-1');
+        $multi = $this->device(model: 'goip-4');
+
+        $this->openTechnicalSession();
+
+        foreach (['ar', 'en'] as $locale) {
+            app()->setLocale($locale);
+
+            foreach ([$single, $multi] as $device) {
+                foreach ([false, true] as $withPasswords) {
+                    $url = route('company.gateways.setup-guide', $device)
+                        .($withPasswords ? '?include_passwords=1' : '');
+
+                    $response = $this->actingAs($this->admin)->get($url);
+
+                    $case = sprintf('%s/%s/%s', $locale, $device->model, $withPasswords ? 'secrets' : 'safe');
+
+                    $response->assertOk();
+                    $response->assertHeader('Content-Type', 'application/pdf');
+                    $this->assertStringContainsString('attachment', (string) $response->headers->get('Content-Disposition'));
+                    // Symfony re-orders and normalises the directives, so the
+                    // meaningful guarantee is that the response is not storable.
+                    $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+
+                    $pdf = $response->streamedContent();
+
+                    // A real PDF file always starts with its magic signature and
+                    // always ends with the trailer keyword.
+                    $this->assertStringStartsWith('%PDF-', $pdf, "Not a PDF for {$case}");
+                    $this->assertStringContainsString('%%EOF', $pdf, "Truncated PDF for {$case}");
+
+                    // The exported file never carries the technical sign-in
+                    // password or any organization sign-in secret.
+                    $this->assertStringNotContainsString($this->password, $pdf, "Leaked a sign-in password for {$case}");
+                }
+            }
+        }
+    }
+
+    /**
+     * Which secrets the guide carries is decided by the template that mPDF
+     * converts. mPDF compresses its content streams and subsets its fonts, so
+     * a password can no longer be grepped out of the finished file; the party
+     * that must be verified is therefore the exact HTML handed to mPDF (which
+     * is what test_the_download_is_a_real_pdf_* proves was converted).
+     */
+    public function test_the_guide_carries_sip_passwords_only_when_explicitly_requested(): void
+    {
+        $device = $this->device(model: 'goip-4');
+        $device->load('lines.route.defaultDestination.destination');
+
+        $secrets = $device->lines->map(fn ($line) => (string) $line->sip_password)->all();
+
+        $this->assertCount(4, $secrets);
+
+        $render = fn (bool $includePasswords): string => view('company.gateway-setup-guide', [
+            'org' => $this->organization,
+            'gateway' => $device,
+            'serverSettings' => app(GatewayProvisioningService::class)->serverSettings(),
+            'profile' => app(GatewayProvisioningService::class)->profiles()[$device->model] ?? null,
+            'includePasswords' => $includePasswords,
+            'exportedAt' => now(),
+        ])->render();
+
+        $safe = $render(false);
+        $withSecrets = $render(true);
+
+        // The default copy lists every port but no SIP password at all.
+        foreach ($secrets as $secret) {
+            $this->assertStringNotContainsString($secret, $safe);
+            $this->assertStringContainsString($secret, $withSecrets);
+        }
+
+        // Each copy carries its own, unmistakable banner.
+        $this->assertStringContainsString('<div class="warn">', $withSecrets);
+        $this->assertStringNotContainsString('<div class="warn">', $safe);
+
+        // Whatever the caller asks for, the technical sign-in password never
+        // enters the guide.
+        $this->assertStringNotContainsString($this->password, $safe);
+        $this->assertStringNotContainsString($this->password, $withSecrets);
+    }
+
+    /**
+     * The export must never answer a failure with a false success. When the PDF
+     * cannot be built, the caller is redirected back with an error that carries
+     * a reference, and the real exception is logged (with the diagnostic
+     * facts), never swallowed.
+     */
+    public function test_a_failed_export_reports_a_reference_instead_of_a_false_success(): void
+    {
+        $device = $this->device();
+        $this->openTechnicalSession();
+
+        Log::spy();
+
+        // `serverSettings()` is called inside the export's try block; making it
+        // throw stands in for any runtime failure (a missing mPDF package, an
+        // unreadable font, an unwritable temp directory).
+        $this->partialMock(GatewayProvisioningService::class, function ($mock): void {
+            $mock->shouldReceive('serverSettings')->andThrow(new RuntimeException('simulated export failure'));
+        });
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('company.gateways.setup-guide', $device));
+
+        $response->assertRedirect(route('company.gateways.index'));
+
+        $error = (string) $response->getSession()->get('error');
+
+        $this->assertMatchesRegularExpression('/SG-[A-Z0-9]{8}/', $error);
+        // The message the user sees is the translated one, never the raw exception.
+        $this->assertStringNotContainsString('simulated export failure', $error);
+        $this->assertStringNotContainsString('vendor/mpdf', $error);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(function (string $message, array $context): bool {
+                return str_contains($message, 'gateway.setup_guide_failed')
+                    && ($context['exception'] ?? null) === RuntimeException::class
+                    && ($context['message'] ?? null) === 'simulated export failure'
+                    && array_key_exists('file', $context)
+                    && array_key_exists('line', $context)
+                    && array_key_exists('mpdf_available', $context)
+                    && array_key_exists('temp_dir_writable', $context);
+            });
+
+        // No "downloaded" audit row and no PDF were produced.
+        $this->assertSame(
+            0,
+            AuditLog::query()->where('action', 'gateway.setup_guide_downloaded')->count(),
         );
     }
 

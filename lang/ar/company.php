@@ -292,11 +292,15 @@ return [
     'gateway_session_org' => 'المؤسسة',
     'gateway_session_account' => 'الحساب الفني',
     'gateway_session_note' => 'أنت داخل جلسة دعم فني. كل عرض لبيانات SIP أو تعديل للأجهزة مسجَّل في سجل النشاط.',
+    'gateway_help_toggle' => 'ما وظيفة هذا القسم؟',
     'gateway_guide_download' => 'تحميل دليل الربط PDF',
+    'gateway_guide_dialog_title' => 'تنزيل دليل الربط',
+    'gateway_guide_download_short' => 'تنزيل الدليل',
     'gateway_guide_include_passwords' => 'تضمين كلمات مرور SIP',
     'gateway_guide_include_passwords_hint' => 'غير مفعّل افتراضياً، ويتطلب الصلاحية الفنية الخاصة بكشف الأسرار. يستخدم كلمات المرور الحالية دون إنشاء أو تدوير أي منها.',
     'gateway_guide_secrets_warning' => 'النسخة التي تتضمن كلمات المرور تحتوي أسراراً فعلية وتُسلَّم للفني المخوّل فقط. تدوير بيانات SIP يجعل النسخة السابقة قديمة.',
     'gateway_guide_downloaded' => 'تم توليد دليل الربط وتنزيله.',
+    'gateway_guide_failed' => 'تعذّر توليد دليل الربط الآن. أبلغ الدعم الفني بالمرجع :reference.',
     'gateway_guide_note' => 'يُولَّد الدليل من البيانات الفعلية للجهاز داخل الجلسة الفنية، ولا يتضمن كلمة مرور الدخول الفني ولا حساب المؤسسة ولا مفاتيح خدمات السيرفر.',
 
     // توجيه وارد المنفذ (قسم الأرقام والتحويل)

@@ -27,6 +27,7 @@ return [
     'gate_disabled_account' => 'The technical account of this organization is disabled. Please contact the super admin.',
     'gate_separation' => 'The technical sign-in is completely separate from the organization administrator account, and grants no access to another organization or to the super-admin console.',
     'gate_no_ui_protection' => 'Access is enforced by server-side authentication and authorisation — not by hiding fields or views.',
+    'gate_help_toggle' => 'How does the technical account relate to the organization account?',
 
     // Session
     'session_badge' => 'Technical support session',
