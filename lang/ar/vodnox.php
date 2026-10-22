@@ -47,6 +47,7 @@ return [
     'usage' => 'الاستخدام',
     'servers' => 'الخوادم',
     'gateways' => 'بوابات الاتصال',
+    'telephony_technical' => 'الإعدادات الفنية للاتصالات',
     'integrations' => 'التكاملات',
     'team' => 'الفريق',
     'audit' => 'سجل التدقيق',

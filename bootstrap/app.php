@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureActiveOrganization;
 use App\Http\Middleware\EnsureFeatureSubscription;
+use App\Http\Middleware\EnsureTechnicalSession;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RoleMiddleware::class,
             'tenant' => EnsureActiveOrganization::class,
             'feature' => EnsureFeatureSubscription::class,
+            'technical.session' => EnsureTechnicalSession::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

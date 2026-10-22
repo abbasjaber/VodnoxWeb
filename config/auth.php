@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\TelephonyTechnicalAccount;
 use App\Models\User;
 
 return [
@@ -42,6 +43,17 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        /*
+        | A fully independent session guard for the "Telephony Technical
+        | Settings" section. It shares the browser session storage but nothing
+        | else: signing in here never signs in the website account and vice
+        | versa, and a technical account can never reach the super-admin panel.
+        */
+        'technical' => [
+            'driver' => 'session',
+            'provider' => 'telephony_technical_accounts',
+        ],
     ],
 
     /*
@@ -71,6 +83,11 @@ return [
         //     'driver' => 'database',
         //     'table' => 'users',
         // ],
+
+        'telephony_technical_accounts' => [
+            'driver' => 'eloquent',
+            'model' => TelephonyTechnicalAccount::class,
+        ],
     ],
 
     /*

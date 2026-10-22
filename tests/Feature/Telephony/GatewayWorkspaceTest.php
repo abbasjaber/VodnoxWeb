@@ -9,9 +9,12 @@ use App\Models\GatewayDevice;
 use App\Models\GatewayLine;
 use App\Models\Organization;
 use App\Models\Permission;
+use App\Models\TelephonyTechnicalAccount;
 use App\Models\User;
 use App\Services\Telephony\GatewayLineRoutingService;
 use App\Services\Telephony\GatewayProvisioningService;
+use App\Services\Telephony\TechnicalSessionService;
+use App\Services\Telephony\TelephonyTechnicalAccountService;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenant;
@@ -20,6 +23,12 @@ use Tests\TestCase;
 
 /**
  * The organization workspace for GSM gateways, end to end through HTTP.
+ *
+ * The workspace now lives inside the "Telephony Technical Settings" section, so
+ * every test that exercises the device/secret routes first opens a *technical*
+ * session — the same server-side gate the real support engineer passes through.
+ * A separate test class proves that the gate actually refuses a website account
+ * that merely holds the gateway permissions.
  *
  * Verified here:
  *   - the page is unreachable for a plain employee and for a guest;
@@ -43,6 +52,8 @@ class GatewayWorkspaceTest extends TestCase
     private Organization $organization;
 
     private User $admin;
+
+    private TelephonyTechnicalAccount $technicalAccount;
 
     private FakeTelephonyGateway $agent;
 
@@ -76,6 +87,12 @@ class GatewayWorkspaceTest extends TestCase
         $this->app->instance(TelephonyGateway::class, $this->agent);
 
         $this->gateways = app(GatewayProvisioningService::class);
+
+        // The device workspace only opens inside a live technical session.
+        $this->technicalAccount = app(TelephonyTechnicalAccountService::class)
+            ->createFor($this->organization, $this->admin->id)['account'];
+
+        $this->openTechnicalSession();
     }
 
     /*
@@ -83,6 +100,39 @@ class GatewayWorkspaceTest extends TestCase
     | Helpers
     |--------------------------------------------------------------------------
     */
+
+    /**
+     * Put the test client inside a live technical session.
+     *
+     * The technical guard is set directly (not through `actingAs`, which would
+     * rebind the *default* guard and let a later `actingAs` overwrite the
+     * technical identity), and the session payload is written the same way the
+     * real sign-in writes it — so `EnsureTechnicalSession` sees a genuine one.
+     */
+    private function openTechnicalSession(): void
+    {
+        $this->app['auth']->guard('technical')->setUser($this->technicalAccount);
+
+        $now = now()->timestamp;
+
+        $this->withSession([
+            TechnicalSessionService::SESSION_KEY => [
+                'account_id' => $this->technicalAccount->getKey(),
+                'organization_id' => $this->technicalAccount->organization_id,
+                'version' => $this->technicalAccount->session_version,
+                'started_at' => $now,
+                'last_activity_at' => $now,
+                'opened_by_user_id' => $this->admin->getKey(),
+            ],
+        ]);
+
+        // Mirror the sign-in's guard session key as well, so a request that
+        // re-resolves the guard behaves exactly like production.
+        $this->app['session']->put(
+            $this->app['auth']->guard('technical')->getName(),
+            $this->technicalAccount->getAuthIdentifier(),
+        );
+    }
 
     private function grant(string $roleName, array $permissions): void
     {

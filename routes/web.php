@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\PlanController as AdminPlan;
 use App\Http\Controllers\Admin\ServerController as AdminServer;
 use App\Http\Controllers\Admin\SettingsController as AdminSettings;
 use App\Http\Controllers\Admin\SubscriptionController as AdminSubscription;
+use App\Http\Controllers\Admin\TechnicalAccountController as AdminTechnicalAccount;
 use App\Http\Controllers\Admin\TeamController as AdminTeam;
 use App\Http\Controllers\Admin\UsageController as AdminUsage;
 use App\Http\Controllers\Auth\LoginController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Company\FormController as CompanyForm;
 use App\Http\Controllers\Company\FormSubmissionController as CompanyFormSubmission;
 use App\Http\Controllers\Company\GatewayController as CompanyGateway;
 use App\Http\Controllers\Company\GatewayLineRoutingController as CompanyGatewayRouting;
+use App\Http\Controllers\Company\GatewaySetupGuideController as CompanyGatewaySetupGuide;
 use App\Http\Controllers\Company\IvrController as CompanyIvr;
 use App\Http\Controllers\Company\NumberController as CompanyNumber;
 use App\Http\Controllers\Company\OpportunityController as CompanyOpportunity;
@@ -37,6 +39,7 @@ use App\Http\Controllers\Company\SmartIvrController as CompanySmartIvr;
 use App\Http\Controllers\Company\SubscriptionController as CompanySubscription;
 use App\Http\Controllers\Company\TaskController as CompanyTask;
 use App\Http\Controllers\Company\TeamController as CompanyTeam;
+use App\Http\Controllers\Company\TechnicalSessionController as CompanyTechnicalSession;
 use App\Http\Controllers\Company\ComplaintController as CompanyComplaint;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\Public\ContactController;
@@ -107,6 +110,16 @@ Route::middleware(['auth', 'role:super_admin'])->prefix('admin')->name('admin.')
     Route::put('organizations/{organization}', [AdminOrganization::class, 'update'])->name('organizations.update');
     Route::patch('organizations/{organization}/status', [AdminOrganization::class, 'updateStatus'])->name('organizations.status');
     Route::delete('organizations/{organization}', [AdminOrganization::class, 'destroy'])->name('organizations.destroy');
+
+    /*
+    | The independent technical sign-in of an organization's "Telephony
+    | Technical Settings" section. It is created with the organization and can
+    | be prepared for organizations that predate the section; the clear
+    | password is shown once, here, and is never retrievable again.
+    */
+    Route::post('organizations/{organization}/technical-account', [AdminTechnicalAccount::class, 'store'])->name('organizations.technical.store');
+    Route::post('organizations/{organization}/technical-account/reset', [AdminTechnicalAccount::class, 'reset'])->name('organizations.technical.reset');
+    Route::patch('organizations/{organization}/technical-account/status', [AdminTechnicalAccount::class, 'updateStatus'])->name('organizations.technical.status');
 
     // Subscriptions
     Route::get('subscriptions', [AdminSubscription::class, 'index'])->name('subscriptions.index');
@@ -246,23 +259,39 @@ Route::middleware(['auth', 'tenant', 'role:organization_admin,supervisor'])->pre
     Route::post('communications/{schedule}/test', [CompanyCommunications::class, 'test'])->name('communications.test');
 
     /*
-    | GSM gateways (GoIP lines).
-    | Visible to the organization administrator and the supervisor, but each
-    | action is gated by its own permission *inside* the controller: a
-    | supervisor may look, never manage, and can never read a SIP secret just
-    | by being inside this route group.
+    | "Telephony Technical Settings" — the section that replaces «بوابات الاتصال».
+    |
+    | Opening the entry shows the technical sign-in screen and NOTHING about
+    | the devices, ports or SIP accounts is loaded into the response before the
+    | technical account has authenticated. The organization administrator keeps
+    | the navigation entry (their numbers & routing workspace lives right
+    | below), but every device/secret/PDF operation is gated by the
+    | `technical.session` middleware on the server — never by hiding a field.
+    |
+    | The route names stay `company.gateways.*` on purpose: they are internal
+    | identifiers, and renaming them would not add any protection while
+    | breaking every existing link and test.
     */
-    Route::get('gateways', [CompanyGateway::class, 'index'])->name('gateways.index');
-    Route::post('gateways', [CompanyGateway::class, 'store'])->name('gateways.store');
-    Route::put('gateways/{gateway}', [CompanyGateway::class, 'update'])->name('gateways.update');
-    Route::delete('gateways/{gateway}', [CompanyGateway::class, 'destroy'])->name('gateways.destroy');
-    Route::post('gateways/{gateway}/retry', [CompanyGateway::class, 'retry'])->name('gateways.retry');
-    Route::post('gateways/{gateway}/refresh', [CompanyGateway::class, 'refresh'])->name('gateways.refresh');
-    Route::post('gateways/{gateway}/toggle', [CompanyGateway::class, 'toggle'])->name('gateways.toggle');
-    Route::get('gateways/{gateway}/settings', [CompanyGateway::class, 'settings'])->name('gateways.settings');
-    Route::put('gateways/{gateway}/lines/{line}', [CompanyGateway::class, 'updateLine'])->name('gateways.lines.update');
-    Route::post('gateways/{gateway}/lines/{line}/rotate', [CompanyGateway::class, 'rotate'])->name('gateways.lines.rotate');
-    Route::get('gateways/{gateway}/lines/{line}/secret', [CompanyGateway::class, 'secret'])->name('gateways.lines.secret');
+    Route::get('gateways', [CompanyTechnicalSession::class, 'show'])->name('gateways.index');
+    Route::post('telephony-technical/login', [CompanyTechnicalSession::class, 'login'])
+        ->middleware('throttle:technical-login')->name('telephony-technical.login');
+    Route::post('telephony-technical/logout', [CompanyTechnicalSession::class, 'logout'])->name('telephony-technical.logout');
+
+    Route::middleware('technical.session')->group(function () {
+        Route::post('gateways', [CompanyGateway::class, 'store'])->name('gateways.store');
+        Route::put('gateways/{gateway}', [CompanyGateway::class, 'update'])->name('gateways.update');
+        Route::delete('gateways/{gateway}', [CompanyGateway::class, 'destroy'])->name('gateways.destroy');
+        Route::post('gateways/{gateway}/retry', [CompanyGateway::class, 'retry'])->name('gateways.retry');
+        Route::post('gateways/{gateway}/refresh', [CompanyGateway::class, 'refresh'])->name('gateways.refresh');
+        Route::post('gateways/{gateway}/toggle', [CompanyGateway::class, 'toggle'])->name('gateways.toggle');
+        Route::get('gateways/{gateway}/settings', [CompanyGateway::class, 'settings'])->name('gateways.settings');
+        Route::put('gateways/{gateway}/lines/{line}', [CompanyGateway::class, 'updateLine'])->name('gateways.lines.update');
+        Route::post('gateways/{gateway}/lines/{line}/rotate', [CompanyGateway::class, 'rotate'])->name('gateways.lines.rotate');
+        Route::get('gateways/{gateway}/lines/{line}/secret', [CompanyGateway::class, 'secret'])->name('gateways.lines.secret');
+
+        // The printable wiring guide, built from the device's real data.
+        Route::get('gateways/{gateway}/setup-guide', [CompanyGatewaySetupGuide::class, 'download'])->name('gateways.setup-guide');
+    });
 
     /*
     | Numbers & routing: the ONE place that owns a port's inbound destination.

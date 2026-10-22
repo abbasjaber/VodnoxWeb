@@ -45,7 +45,9 @@ class EndToEndScenarioTest extends TestCase
         $super = $this->superAdmin();
 
         // Super admin provisions a brand-new organization together with its
-        // first administrator in a single request.
+        // first administrator in a single request. The answer is the one-time
+        // technical credentials page (200), not a redirect: the support sign-in
+        // is shown exactly once and can never be retrieved again.
         $this->actingAs($super)
             ->post(route('admin.organizations.store'), [
                 'code' => 'REVIEW-01',
@@ -58,7 +60,7 @@ class EndToEndScenarioTest extends TestCase
                 'admin_email' => 'orgadmin01@vodnox.test',
                 'admin_password' => 'OrgAdmin#2026',
             ])
-            ->assertRedirect()
+            ->assertOk()
             ->assertSessionHasNoErrors();
 
         $organization = Organization::query()->where('code', 'REVIEW-01')->sole();

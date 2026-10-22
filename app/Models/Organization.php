@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Organization extends Model
@@ -60,6 +61,14 @@ class Organization extends Model
     public function gatewayLines(): HasMany
     {
         return $this->hasMany(GatewayLine::class);
+    }
+
+    /**
+     * The organization's independent telephony technical sign-in (at most one).
+     */
+    public function technicalAccount(): HasOne
+    {
+        return $this->hasOne(TelephonyTechnicalAccount::class);
     }
 
     public function customers(): HasMany

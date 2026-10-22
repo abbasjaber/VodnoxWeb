@@ -22,10 +22,18 @@
         : false;
     $addons = [
         ['communications', 'vodnox.communications', 'phone', route('company.communications.index')],
-        ['gateways', 'vodnox.gateways', 'integrations', route('company.gateways.index')],
         ['crm', 'vodnox.crm', 'plans', route('company.crm.index')],
         ['forms', 'VODNOX FORMS', 'plans', route('company.forms.index')],
     ];
+    // «الإعدادات الفنية للاتصالات» appears only for whoever may open it — a
+    // plain employee never sees the entry. Showing it protects nothing on its
+    // own: opening it always shows the technical sign-in screen first, and the
+    // server gates every device/secret action behind that session.
+    if (auth()->user()?->hasPermission('view_gateways')) {
+        array_splice($addons, 1, 0, [
+            ['gateways', 'vodnox.telephony_technical', 'integrations', route('company.gateways.index')],
+        ]);
+    }
     if ($smartIvrActive) {
         $addons[] = ['smart-ivr', 'vodnox.smart_ivr', 'integrations', route('company.smart-ivr.index')];
     }

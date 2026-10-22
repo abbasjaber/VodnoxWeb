@@ -17,6 +17,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditService;
 use App\Services\Telephony\TelephonyProvisioningService;
+use App\Services\Telephony\TelephonyTechnicalAccountService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -25,6 +26,7 @@ class OrganizationController extends Controller
     public function __construct(
         private readonly AuditService $audit,
         private readonly TelephonyProvisioningService $provisioning,
+        private readonly TelephonyTechnicalAccountService $technicalAccounts,
     ) {
     }
 
@@ -60,7 +62,7 @@ class OrganizationController extends Controller
     {
         $data = $request->validated();
 
-        $organization = DB::transaction(function () use ($data) {
+        [$organization, $technical] = DB::transaction(function () use ($data) {
             $organization = Organization::create([
                 'code' => $data['code'],
                 'name_ar' => $data['name_ar'],
@@ -83,27 +85,50 @@ class OrganizationController extends Controller
                 'role_id' => $role?->id,
                 'name' => $data['admin_name'],
                 'username' => $data['admin_username'],
-                'email' => $data['admin_email'] ?? null,
+                // users.email is NOT NULL, while the form keeps this field
+                // optional; fall back to a deterministic, unique placeholder.
+                'email' => ($data['admin_email'] ?? null) ?: sprintf('org%d.admin@vodnox.local', $organization->id),
                 'password' => $data['admin_password'],
                 'active' => true,
             ]);
 
-            return $organization;
+            // A separate, one-way-hashed technical sign-in for the new
+            // organization. It is independent of the administrator account above
+            // and is never a shared support login.
+            return [$organization, $this->technicalAccounts->createFor($organization, auth()->id())];
         });
 
         $this->audit->log('organization.created', $organization, [], ['code' => $organization->code], null, $organization->id);
 
+        $this->audit->log(
+            'telephony_technical.account_created',
+            $organization,
+            [],
+            ['username' => $technical['account']->username],
+            null,
+            $organization->id,
+        );
+
         // Provision a dedicated, isolated telephony context for the organization.
         $this->provisioning->syncOrganizationEnabledState($organization);
 
-        return redirect()->route('admin.organizations.show', $organization)
-            ->with('status', __('admin.flash_created'));
+        // The clear technical password is shown exactly once, here. It is never
+        // flashed through the session, never logged and never retrievable again.
+        return response()->view('admin.organizations.technical-credentials', [
+            'organization' => $organization,
+            'account' => $technical['account'],
+            'password' => $technical['password'],
+            'created' => true,
+        ])->withHeaders([
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function show(Request $request, Organization $organization)
     {
         $tab = (string) $request->query('tab', 'info');
-        $allowed = ['info', 'subscription', 'users', 'numbers', 'ivr', 'usage', 'recordings', 'invoices', 'activity'];
+        $allowed = ['info', 'subscription', 'users', 'numbers', 'ivr', 'usage', 'recordings', 'invoices', 'activity', 'technical'];
         if (! in_array($tab, $allowed, true)) {
             $tab = 'info';
         }
@@ -123,6 +148,8 @@ class OrganizationController extends Controller
         $auditLogs = AuditLog::where('organization_id', $organization->id)->with('user')->latest()->limit(30)->get();
         $activationRequests = ActivationRequest::where('organization_id', $organization->id)->with('feature')->latest()->get();
 
+        $technicalAccount = $organization->technicalAccount()->first();
+
         $usage = [
             'users' => $organization->users->count(),
             'extensions' => $organization->extensions->count(),
@@ -135,7 +162,7 @@ class OrganizationController extends Controller
 
         return view('admin.organizations.show', compact(
             'organization', 'tab', 'phoneNumbers', 'ivrMenus', 'callQueues',
-            'recordings', 'auditLogs', 'activationRequests', 'usage'
+            'recordings', 'auditLogs', 'activationRequests', 'usage', 'technicalAccount'
         ));
     }
 

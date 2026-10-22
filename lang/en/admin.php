@@ -21,6 +21,8 @@ return [
     'none' => 'None',
     'no_data' => 'No data',
     'back' => 'Back',
+    'copy' => 'Copy',
+    'copied' => 'Copied',
     'confirm' => 'Confirm',
     'optional' => 'optional',
     'confirm_delete' => 'Are you sure you want to delete? This action cannot be undone.',
@@ -131,6 +133,7 @@ return [
     'tab_usage' => 'Usage',
     'tab_recordings' => 'Recordings',
     'tab_invoices' => 'Invoices',
+    'tab_technical' => 'Telephony technical settings',
     'tab_activity' => 'Activity',
     // Detail labels
     'dl_code' => 'Account ID',
@@ -151,6 +154,34 @@ return [
     'recording_size' => 'Size',
     'recording_duration' => 'Duration',
     'activity_title' => 'Activity log',
+
+    // Telephony technical account (per organization)
+    'tech_intro' => 'An independent technical sign-in account for this organization, managed by the super admin. It grants no access to the super admin console or to any other organization.',
+    'tech_username' => 'Technical username',
+    'tech_password' => 'Technical password',
+    'tech_active' => 'Active',
+    'tech_disabled' => 'Disabled',
+    'tech_password_changed' => 'Password last changed',
+    'tech_last_login' => 'Last technical sign-in',
+    'tech_disabled_at' => 'Disabled at',
+    'tech_password_note' => 'The password is stored hashed and cannot be recovered. You can only reset it or disable the account.',
+    'tech_reset' => 'Reset password',
+    'tech_reset_confirm' => 'Existing technical sessions will be revoked. Continue?',
+    'tech_disable' => 'Disable account',
+    'tech_enable' => 'Enable account',
+    'tech_missing' => 'This organization has no technical account yet. Create it so the technical support team can manage telephony devices.',
+    'tech_create' => 'Create technical account',
+    'tech_exists' => 'This organization already has a technical account. Use reset to change the password.',
+    'tech_audit_note' => 'Creating, disabling, and resetting the technical account are recorded in the audit log without storing secrets.',
+
+    // Technical credentials (shown once)
+    'tech_credentials_title' => 'Technical sign-in credentials',
+    'tech_created_title' => 'Technical account created',
+    'tech_reset_title' => 'Technical password reset',
+    'tech_once_note' => 'This password is shown only once and cannot be recovered later. Copy it and hand it to the authorized technician now.',
+    'tech_signin_url' => 'Technical sign-in URL',
+    'tech_secrets_warning' => 'This page contains secrets. Do not share it or store it anywhere insecure.',
+    'tech_independent_note' => 'This account is fully independent of the organization admin account, and grants no access to other organizations or to the super admin console.',
 
     // Plans
     'plan_title' => 'Plans',

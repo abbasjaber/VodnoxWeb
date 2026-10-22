@@ -47,6 +47,7 @@ return [
     'usage' => 'Usage',
     'servers' => 'Servers',
     'gateways' => 'Connection gateways',
+    'telephony_technical' => 'Telephony Technical Settings',
     'integrations' => 'Integrations',
     'team' => 'Team',
     'audit' => 'Audit Log',

@@ -31,17 +31,33 @@
         <h1>{{ __('company.gateways_title') }}</h1>
         <p>{{ __('company.gateways_subtitle') }}</p>
     </div>
-    @if ($canManage)
-        <div class="head-actions">
+    <div class="head-actions">
+        @if ($canManage)
             <button type="button" class="btn-primary"
                     data-company-modal
                     data-company-title="{{ __('company.gateway_new') }}"
                     data-company-action="{{ route('company.gateways.store') }}"
                     data-company-submit="{{ __('company.save') }}"
                     data-company-template="tpl-gateway-create">{{ __('company.gateway_new') }}</button>
-        </div>
-    @endif
+        @endif
+        <form method="POST" action="{{ route('company.telephony-technical.logout') }}">
+            @csrf
+            <button type="submit" class="btn-quiet">{{ __('telephony_technical.session_end') }}</button>
+        </form>
+    </div>
 </div>
+
+{{--
+    Session banner: the page is only ever rendered inside a live technical
+    session, so the organization and the shared technical account are shown
+    plainly, together with the way out of the session.
+--}}
+<div class="section-note" role="status">
+    <span class="status active">{{ __('telephony_technical.session_badge') }}</span>
+    · {{ __('company.gateway_session_org') }}: <b>{{ $org->name_ar ?? $org->name_en }}</b>
+    · {{ __('company.gateway_session_account') }}: <b class="code-note">{{ auth('technical')->user()?->username }}</b>
+</div>
+<p class="section-note">{{ __('company.gateway_session_note') }}</p>
 
 @unless ($supportsGateways)
     <div class="section-note" role="alert">{{ __('company.gateway_agent_old') }}</div>
@@ -86,6 +102,15 @@
             </div>
             <div class="table-actions">
                 <a class="row-link" href="{{ route('company.gateways.settings', $device) }}">{{ __('company.gateway_settings_link') }}</a>
+                <form method="GET" action="{{ route('company.gateways.setup-guide', $device) }}">
+                    @if ($canViewSecret)
+                        <label class="section-note" title="{{ __('company.gateway_guide_include_passwords_hint') }}">
+                            <input type="checkbox" name="include_passwords" value="1">
+                            {{ __('company.gateway_guide_include_passwords') }}
+                        </label>
+                    @endif
+                    <button type="submit" class="row-link">{{ __('company.gateway_guide_download') }}</button>
+                </form>
                 <form method="POST" action="{{ route('company.gateways.refresh', $device) }}">
                     @csrf
                     <button type="submit" class="row-link">{{ __('company.gateway_refresh_status') }}</button>

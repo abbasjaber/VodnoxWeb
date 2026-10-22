@@ -138,13 +138,13 @@ return [
     'devices' => 'Devices',
     'no_device' => 'No device linked',
 
-    // Connection gateways (GSM / GoIP lines)
-    'gateways_title' => 'Connection gateways',
-    'gateways_subtitle' => 'Connect a GSM gateway (GoIP) so incoming mobile calls reach your extensions.',
-    'gateway' => 'Gateway',
-    'gateways' => 'Gateways',
-    'gateway_new' => 'Add gateway',
-    'gateway_edit' => 'Edit gateway',
+    // Telephony Technical Settings (GSM / GoIP lines)
+    'gateways_title' => 'Telephony Technical Settings',
+    'gateways_subtitle' => 'A technical section protected by a support session: add GSM (GoIP) devices, manage their ports and SIP data.',
+    'gateway' => 'Device',
+    'gateways' => 'Devices',
+    'gateway_new' => 'Add GSM device',
+    'gateway_edit' => 'Edit device',
     'gateway_label' => 'Descriptive name',
     'gateway_model' => 'Device model / file',
     'gateway_firmware' => 'Firmware',
@@ -256,8 +256,8 @@ return [
     'gateway_server_register' => 'Re-register (seconds)',
     'gateway_server_note' => 'These are the classic SIP/UDP settings for the device — not the web (HTTPS) address, not the AMI port and not the secure web-socket address.',
 
-    // Gateways — separated responsibilities and port management
-    'gateway_separation_note' => 'Devices are added and their ports are managed here only. Choosing an inbound destination and its schedules is done in the Numbers & routing section.',
+    // Telephony Technical Settings — separated responsibilities and port management
+    'gateway_separation_note' => 'Devices, their ports and their SIP data are added and managed here only, inside a technical session. Choosing an inbound destination and its schedules is done in the Numbers & routing section.',
     'gateway_routing_agent_old' => 'The server-side agent does not support port routing schedules yet (it needs version 1.3.0). Until then the schedules are saved but not applied at call time.',
     'gateway_ports_used' => 'Used ports',
     'gateway_ports_available' => 'Available ports',
@@ -287,6 +287,17 @@ return [
     'gateway_port_settings' => 'Per-port settings',
     'gateway_port_settings_note' => 'Authentication ID and phone number for each port. Never copy one line\'s values to another.',
     'gateway_port_settings_hint' => 'Each port name sits next to its own values so the fields cannot be mixed up. The password is revealed on demand only.',
+
+    // Technical section — session and setup guide
+    'gateway_session_org' => 'Organization',
+    'gateway_session_account' => 'Technical account',
+    'gateway_session_note' => 'You are inside a technical support session. Every reveal of SIP data and every device change is recorded in the activity log.',
+    'gateway_guide_download' => 'Download setup guide',
+    'gateway_guide_include_passwords' => 'Include SIP passwords',
+    'gateway_guide_include_passwords_hint' => 'Off by default, and requires the technical secret-reveal permission. It uses the current passwords and creates or rotates none.',
+    'gateway_guide_secrets_warning' => 'The copy that includes passwords contains real secrets and is handed to the authorised engineer only. Rotating the SIP credentials makes the previous copy stale.',
+    'gateway_guide_downloaded' => 'The setup guide was generated and downloaded.',
+    'gateway_guide_note' => 'The guide is built from the device\'s real data inside the technical session, and never contains the technical sign-in password, the organization account or any server service key.',
 
     // Gateway port inbound routing (Numbers & routing section)
     'gateway_routing_title' => 'Port inbound routing',

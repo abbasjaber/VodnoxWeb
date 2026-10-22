@@ -13,6 +13,7 @@
         'usage' => 'admin.tab_usage',
         'recordings' => 'admin.tab_recordings',
         'invoices' => 'admin.tab_invoices',
+        'technical' => 'admin.tab_technical',
         'activity' => 'admin.tab_activity',
     ];
     $statuses = ['pending', 'active', 'trial', 'suspended', 'expired'];
@@ -332,6 +333,55 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
+@elseif ($tab === 'technical')
+    {{--
+        The independent technical sign-in of the "Telephony Technical Settings"
+        section. The organization administrator never sees this card: it exists
+        in the platform console only. The password is shown once, right after
+        creation or reset — never here.
+    --}}
+    <div class="card">
+        <div class="card-head"><div><h2>{{ __('admin.tab_technical') }}</h2><p>{{ __('admin.tech_intro') }}</p></div></div>
+
+        @if ($technicalAccount)
+            <div class="table-wrap">
+                <table>
+                    <tbody>
+                        <tr><th>{{ __('admin.tech_username') }}</th><td class="code-note">{{ $technicalAccount->username }}</td></tr>
+                        <tr><th>{{ __('admin.status') }}</th>
+                            <td><span class="status {{ $technicalAccount->active ? 'active' : 'inactive' }}">{{ $technicalAccount->active ? __('admin.tech_active') : __('admin.tech_disabled') }}</span></td></tr>
+                        <tr><th>{{ __('admin.tech_password_changed') }}</th><td>{{ $technicalAccount->password_changed_at?->format('Y-m-d H:i') ?? '—' }}</td></tr>
+                        <tr><th>{{ __('admin.tech_last_login') }}</th><td>{{ $technicalAccount->last_login_at?->format('Y-m-d H:i') ?? '—' }}</td></tr>
+                        <tr><th>{{ __('admin.tech_disabled_at') }}</th><td>{{ $technicalAccount->disabled_at?->format('Y-m-d H:i') ?? '—' }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="section-note">{{ __('admin.tech_password_note') }}</p>
+            <div class="head-actions">
+                <form method="POST" action="{{ route('admin.organizations.technical.reset', $organization) }}" data-admin-confirm="{{ __('admin.tech_reset_confirm') }}">
+                    @csrf
+                    <button type="submit" class="btn-secondary">{{ __('admin.tech_reset') }}</button>
+                </form>
+                <form method="POST" action="{{ route('admin.organizations.technical.status', $organization) }}">
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="active" value="{{ $technicalAccount->active ? 0 : 1 }}">
+                    <button type="submit" class="btn-quiet">{{ $technicalAccount->active ? __('admin.tech_disable') : __('admin.tech_enable') }}</button>
+                </form>
+            </div>
+        @else
+            <div class="section-note" role="alert">{{ __('admin.tech_missing') }}</div>
+            <form method="POST" action="{{ route('admin.organizations.technical.store', $organization) }}">
+                @csrf
+                <div class="head-actions">
+                    <button type="submit" class="btn-primary">{{ __('admin.tech_create') }}</button>
+                </div>
+            </form>
+        @endif
+
+        <p class="section-note">{{ __('admin.tech_audit_note') }}</p>
     </div>
 
 @elseif ($tab === 'activity')

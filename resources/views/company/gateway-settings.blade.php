@@ -35,9 +35,31 @@
         <p>{{ __('company.gateway_settings_subtitle') }}</p>
     </div>
     <div class="head-actions">
+        <form method="GET" action="{{ route('company.gateways.setup-guide', $gateway) }}">
+            @if ($canViewSecret)
+                <label class="section-note" title="{{ __('company.gateway_guide_include_passwords_hint') }}">
+                    <input type="checkbox" name="include_passwords" value="1">
+                    {{ __('company.gateway_guide_include_passwords') }}
+                </label>
+            @endif
+            <button type="submit" class="btn-primary">{{ __('company.gateway_guide_download') }}</button>
+        </form>
         <a class="btn-secondary" href="{{ route('company.gateways.index') }}">{{ __('company.back') }}</a>
     </div>
 </div>
+
+{{--
+    Session banner: this whole page is only reachable inside a live technical
+    session. The organization and the shared technical account are shown
+    plainly, together with the way out of the session.
+--}}
+<div class="section-note" role="status">
+    <span class="status active">{{ __('telephony_technical.session_badge') }}</span>
+    · {{ __('company.gateway_session_org') }}: <b>{{ $org->name_ar ?? $org->name_en }}</b>
+    · {{ __('company.gateway_session_account') }}: <b class="code-note">{{ auth('technical')->user()?->username }}</b>
+</div>
+<p class="section-note">{{ __('company.gateway_session_note') }}</p>
+<p class="section-note">{{ __('company.gateway_guide_note') }}</p>
 
 @if (! empty($profile['notes_'.app()->getLocale()]))
     <div class="section-note">{{ __($profile['notes_'.app()->getLocale()]) }}</div>

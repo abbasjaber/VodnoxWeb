@@ -103,6 +103,20 @@ return [
         'gateway_registration_stale' => (int) env('TELEPHONY_GATEWAY_STALE_SECONDS', 180),
 
         /*
+        | Lifetime of the "Telephony Technical Settings" support session.
+        |
+        | A technical session ends after `idle_minutes` without activity AND in
+        | any case after `absolute_minutes`, whichever comes first. Both are
+        | configurable so the operator can tighten or relax them per deployment
+        | without touching code. They are enforced server-side by
+        | App\Http\Middleware\EnsureTechnicalSession, never by the browser.
+        */
+        'technical_session' => [
+            'idle_minutes' => (int) env('TELEPHONY_TECHNICAL_IDLE_MINUTES', 15),
+            'absolute_minutes' => (int) env('TELEPHONY_TECHNICAL_ABSOLUTE_MINUTES', 120),
+        ],
+
+        /*
         | Device profiles.
         |
         | A profile fixes three things that differ between models and that no

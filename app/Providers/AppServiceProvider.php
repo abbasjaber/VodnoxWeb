@@ -101,5 +101,32 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
+
+        /*
+        | Telephony Technical Settings sign-in.
+        |
+        | Keyed on the submitted username *and* the IP so neither a single
+        | account nor a single source can be hammered. The web response is a
+        | plain redirect back to the gate with an explicit message — it never
+        | repeats the submitted values, so it cannot confirm a username.
+        */
+        RateLimiter::for('technical-login', function (Request $request) {
+            return Limit::perMinute(5)
+                ->by(($request->input('username') ?: 'unknown').'|'.$request->ip())
+                ->response(function (Request $request) {
+                    $message = __('telephony_technical.too_many_attempts');
+
+                    if ($request->expectsJson()) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => $message,
+                            'data' => null,
+                            'errors' => ['username' => [$message]],
+                        ], 429);
+                    }
+
+                    return redirect()->route('company.gateways.index')->with('error', $message);
+                });
+        });
     }
 }
