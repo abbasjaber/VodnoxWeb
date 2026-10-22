@@ -190,6 +190,25 @@ class TelephonyTechnicalSettingsTest extends TestCase
         ]);
     }
 
+    /**
+     * Render the guide's HTML the same way the controller does. mPDF compresses
+     * and subsets what it converts, so the exact text handed to it is the layer
+     * the English-only rule and the printed values can be asserted on.
+     */
+    private function renderGuide(GatewayDevice $device, bool $includePasswords = false): string
+    {
+        $device->load('lines.route.defaultDestination');
+
+        return view('company.gateway-setup-guide', [
+            'org' => $device->organization,
+            'gateway' => $device,
+            'serverSettings' => $this->gateways->serverSettings(),
+            'profile' => $this->gateways->profiles()[$device->model] ?? null,
+            'includePasswords' => $includePasswords,
+            'exportedAt' => now(),
+        ])->render();
+    }
+
     /*
     |--------------------------------------------------------------------------
     | The entry: sign-in only, and never device data
@@ -766,23 +785,13 @@ class TelephonyTechnicalSettingsTest extends TestCase
     public function test_the_guide_carries_sip_passwords_only_when_explicitly_requested(): void
     {
         $device = $this->device(model: 'goip-4');
-        $device->load('lines.route.defaultDestination');
 
         $secrets = $device->lines->map(fn ($line) => (string) $line->sip_password)->all();
 
         $this->assertCount(4, $secrets);
 
-        $render = fn (bool $includePasswords): string => view('company.gateway-setup-guide', [
-            'org' => $this->organization,
-            'gateway' => $device,
-            'serverSettings' => app(GatewayProvisioningService::class)->serverSettings(),
-            'profile' => app(GatewayProvisioningService::class)->profiles()[$device->model] ?? null,
-            'includePasswords' => $includePasswords,
-            'exportedAt' => now(),
-        ])->render();
-
-        $safe = $render(false);
-        $withSecrets = $render(true);
+        $safe = $this->renderGuide($device, false);
+        $withSecrets = $this->renderGuide($device, true);
 
         // The default copy lists every port but no SIP password at all.
         foreach ($secrets as $secret) {
@@ -790,14 +799,270 @@ class TelephonyTechnicalSettingsTest extends TestCase
             $this->assertStringContainsString($secret, $withSecrets);
         }
 
-        // Each copy carries its own, unmistakable banner.
-        $this->assertStringContainsString('<div class="warn">', $withSecrets);
-        $this->assertStringNotContainsString('<div class="warn">', $safe);
+        // Each copy carries its own, unmistakable banner. The secrets banner has
+        // a class of its own, distinct from the "profile not verified" warning
+        // this model legitimately carries.
+        $this->assertStringContainsString('<div class="warn secrets">', $withSecrets);
+        $this->assertStringNotContainsString('class="warn secrets"', $safe);
+        $this->assertStringContainsString('This copy contains the current SIP passwords.', $withSecrets);
+        $this->assertStringNotContainsString('This copy contains the current SIP passwords.', $safe);
+
+        // The copy without secrets says so, and tells the engineer where the
+        // password comes from instead of printing a placeholder.
+        $this->assertStringContainsString('This copy does not contain any SIP password.', $safe);
 
         // Whatever the caller asks for, the technical sign-in password never
         // enters the guide.
         $this->assertStringNotContainsString($this->password, $safe);
         $this->assertStringNotContainsString($this->password, $withSecrets);
+    }
+
+    /**
+     * The guide is English and left to right on its own terms, whatever the
+     * dashboard language was when the export was started. A name stored in
+     * another script is replaced by a neutral English identifier — never
+     * transliterated, never translated, never printed as-is.
+     */
+    public function test_the_guide_is_english_only_and_left_to_right_in_either_dashboard_language(): void
+    {
+        foreach (['ar', 'en'] as $locale) {
+            app()->setLocale($locale);
+
+            $organization = $this->organization(['name_en' => 'مؤسسة اختبار', 'language' => 'ar']);
+            $device = $this->device($organization, 'goip-1');
+            $device->forceFill(['label' => 'بوابة المكتب'])->save();
+            $device = $device->refresh();
+
+            $html = $this->renderGuide($device, true);
+
+            $this->assertStringContainsString('<html lang="en" dir="ltr">', $html, "Not LTR for locale {$locale}");
+            $this->assertStringContainsString('VODNOX — GSM Gateway Setup Guide', $html);
+
+            // Not one Arabic character is rendered, in any element.
+            $this->assertSame(
+                0,
+                preg_match('/[\x{0600}-\x{06FF}]/u', $html),
+                "Arabic text leaked into the guide for locale {$locale}",
+            );
+
+            // The neutral identifiers replace the non-English names.
+            $this->assertStringContainsString('Organization '.$organization->code, $html);
+            $this->assertStringContainsString('Gateway #'.$device->getKey(), $html);
+            $this->assertStringNotContainsString('مؤسسة اختبار', $html);
+            $this->assertStringNotContainsString('بوابة المكتب', $html);
+        }
+    }
+
+    /**
+     * The step paths and the field labels must match the English interface of
+     * the exercised device literally, and the inbound CID mode must be the one
+     * that was confirmed on real hardware.
+     */
+    public function test_the_guide_names_the_real_device_pages_and_the_verified_cid_mode(): void
+    {
+        $device = $this->device(model: 'goip-1');
+        $html = $this->renderGuide($device, true);
+
+        // The three real pages of the exercised GoIP interface.
+        $this->assertStringContainsString('Configurations &gt; Basic VoIP', $html);
+        $this->assertStringContainsString('Configurations &gt; Call In', $html);
+        $this->assertStringContainsString('Configurations &gt; Media', $html);
+        $this->assertStringContainsString('Path on the device:', $html);
+
+        // The value exercised on hardware — and never the wrong one the earlier
+        // guide printed.
+        $this->assertStringContainsString('Use RemotePartyID', $html);
+        $this->assertStringNotContainsString('P-Asserted', $html);
+        $this->assertStringNotContainsString('PAsserted', $html);
+
+        // Every field the engineer types into, named as the device names it.
+        foreach ([
+            'Endpoint Type', 'Config Mode', 'Authentication ID', 'Password',
+            'SIP Proxy', 'SIP Registrar', 'Re-register Period', 'Phone Number',
+            'Home Domain', 'Outbound Proxy',
+            'Call IN via GSM', 'CID Forward Mode', 'Forwarding to VoIP Number',
+            'Media Encryption', 'Media NAT Traversal', 'Signaling NAT Traversal',
+            'Audio Codec Preference', 'RTP Port Range',
+        ] as $field) {
+            $this->assertStringContainsString($field, $html, "Missing field name: {$field}");
+        }
+
+        // The practical wording the engineer follows.
+        $this->assertStringContainsString('Click Save Changes.', $html);
+        $this->assertStringContainsString('Step 1 — Connect the gateway', $html);
+        $this->assertStringContainsString('Step 2 — Configure the SIP account', $html);
+        $this->assertStringContainsString('Step 3 — Configure incoming GSM calls', $html);
+        $this->assertStringContainsString('Step 4 — Configure media', $html);
+        $this->assertStringContainsString('Step 5 — Verify registration and test a call', $html);
+    }
+
+    /**
+     * Every printed value must come from the device rows themselves: the SIP
+     * identity, the inbound path of the port and the server settings. The port's
+     * inbound path is its own number, never the employee extension.
+     */
+    public function test_the_guide_prints_the_port_values_from_the_database(): void
+    {
+        $device = $this->device(model: 'goip-1');
+        $line = $device->lines()->firstOrFail();
+        $extension = $this->extension($this->organization, '1001');
+
+        GatewayLineRoute::firstOrCreate(
+            ['gateway_line_id' => $line->getKey()],
+            ['organization_id' => $this->organization->getKey()],
+        )->forceFill([
+            'default_destination_extension_id' => $extension->getKey(),
+        ])->save();
+
+        $device = $device->refresh()->load('lines.route.defaultDestination');
+
+        $safe = $this->renderGuide($device, false);
+        $withSecrets = $this->renderGuide($device, true);
+
+        // The identity and the server settings are the stored ones.
+        $this->assertStringContainsString($line->sip_username, $withSecrets);
+        $this->assertStringContainsString($line->sip_password, $withSecrets);
+        $this->assertStringContainsString('sip.gw.test:5060', $withSecrets);
+        $this->assertStringContainsString('gw.test', $withSecrets);
+        $this->assertStringContainsString((string) config('integrations.telephony.gateway_registration_interval'), $withSecrets);
+
+        // The port's own inbound number, and it is not the employee extension.
+        $this->assertSame('5000', (string) $line->inbound_number);
+        $this->assertStringContainsString($line->inbound_number, $withSecrets);
+        $this->assertNotSame($extension->extension, (string) $line->inbound_number);
+        $this->assertStringContainsString($extension->extension, $withSecrets);
+
+        // Without the explicit request, the secret is absent from the file.
+        $this->assertStringNotContainsString($line->sip_password, $safe);
+    }
+
+    /**
+     * A multi-port device gets one clearly separated section per port — never a
+     * crowded horizontal table that mixes several accounts together.
+     */
+    public function test_a_multi_port_guide_gives_every_port_its_own_section(): void
+    {
+        $single = $this->device(model: 'goip-1');
+        $multi = $this->device(model: 'goip-4');
+
+        $singleHtml = $this->renderGuide($single, true);
+        $multiHtml = $this->renderGuide($multi, true);
+
+        $this->assertSame(1, substr_count($singleHtml, '<div class="port">'));
+        $this->assertSame(4, substr_count($multiHtml, '<div class="port">'));
+
+        foreach ($multi->lines as $line) {
+            $this->assertStringContainsString('Port #'.$line->line_index, $multiHtml);
+            $this->assertStringContainsString($line->sip_username, $multiHtml);
+            $this->assertStringContainsString($line->inbound_number, $multiHtml);
+        }
+
+        // Each port has its own identity, so copying one account onto another
+        // port is detectable.
+        $usernames = $multi->lines->pluck('sip_username')->all();
+        $this->assertSame(count($usernames), count(array_unique($usernames)));
+
+        // A model that was exercised is stated as verified; a model that was not
+        // is stated as not verified instead of pretending.
+        $this->assertStringContainsString('verified on real hardware', $singleHtml);
+        $this->assertStringContainsString('not verified on real hardware', $multiHtml);
+        $this->assertStringNotContainsString('not verified on real hardware', $singleHtml);
+    }
+
+    /**
+     * Ports that carry no SIM are named in one short line and never print a
+     * credential, even in a copy that carries the passwords.
+     */
+    public function test_ports_that_are_not_in_use_are_listed_without_any_credential(): void
+    {
+        $device = $this->gateways->createDevice(
+            $this->organization,
+            $this->admin->id,
+            ['label' => 'GoIP partial', 'model' => 'goip-4'],
+            [
+                ['label' => 'SIM 1', 'sim_number' => '07700001', 'enabled' => true],
+                ['label' => 'SIM 2', 'sim_number' => '07700002', 'enabled' => false],
+                ['label' => 'SIM 3', 'sim_number' => '07700003', 'enabled' => false],
+                ['label' => 'SIM 4', 'sim_number' => '07700004', 'enabled' => false],
+            ],
+        );
+
+        $used = $device->lines->firstWhere('enabled', true);
+        $unused = $device->lines->where('enabled', false);
+
+        $html = $this->renderGuide($device, true);
+
+        $this->assertSame(1, substr_count($html, '<div class="port">'));
+        $this->assertStringContainsString('Ports not in use', $html);
+
+        $this->assertStringContainsString($used->sip_username, $html);
+        $this->assertStringContainsString($used->sip_password, $html);
+
+        foreach ($unused as $line) {
+            $this->assertStringContainsString('#'.$line->line_index.' ('.$line->label.')', $html);
+            $this->assertStringNotContainsString($line->sip_username, $html);
+            $this->assertStringNotContainsString($line->sip_password, $html);
+        }
+    }
+
+    /**
+     * The guide has to say where registration is actually read and how the call
+     * is proven end to end, because a green registration alone is not audio.
+     */
+    public function test_the_guide_explains_how_to_verify_registration_and_test_the_call(): void
+    {
+        $device = $this->device(model: 'goip-1');
+        $html = $this->renderGuide($device, true);
+
+        // Where the engineer checks, on the device and in VODNOX.
+        $this->assertStringContainsString('Status &gt; VoIP Status', $html);
+        $this->assertStringContainsString('Refresh status', $html);
+        $this->assertStringContainsString('Registered on device', $html);
+        $this->assertStringContainsString('dial the mobile number of the SIM', $html);
+
+        // Registration is not audio, and the troubleshooting table says what to
+        // check next for the three failures that matter.
+        $this->assertStringContainsString('does not prove that the', $html);
+        $this->assertStringContainsString('Troubleshooting', $html);
+        $this->assertStringContainsString('The port never registers', $html);
+        $this->assertStringContainsString('does not ring', $html);
+        $this->assertStringContainsString('nobody hears the other side', $html);
+    }
+
+    /**
+     * mPDF only looks a couple of lines ahead for `page-break-after: avoid`, so a
+     * heading followed by a table or a box was left alone at the foot of a page
+     * (found by reading the exported PDF, not by a unit test). Every heading of
+     * the guide is therefore grouped with the block that belongs to it, and this
+     * guards that grouping against a later edit.
+     */
+    public function test_every_heading_is_grouped_with_the_block_that_follows_it(): void
+    {
+        $device = $this->device(model: 'goip-4');
+        $html = $this->renderGuide($device, true);
+
+        $this->assertStringContainsString('.keep { page-break-inside: avoid; }', $html);
+
+        // Only the body is inspected; the <style> block also carries selectors.
+        $body = substr($html, (int) strpos($html, '<body>'));
+
+        preg_match_all('/<h([23])[ >]/', $body, $matches, PREG_OFFSET_CAPTURE);
+
+        $this->assertNotEmpty($matches[0]);
+
+        foreach ($matches[0] as [$heading, $offset]) {
+            $before = rtrim(substr($body, 0, $offset));
+
+            // A heading is safe when it opens together with the block it belongs
+            // to: a grouped section, or the port card that holds its own fields.
+            $grouped = str_ends_with($before, '<div class="keep">')
+                || str_ends_with($before, '<div class="port">');
+
+            $this->assertTrue(
+                $grouped,
+                'This heading is not grouped with its content: '.$heading
+            );
+        }
     }
 
     public function test_the_setup_guide_exports_a_real_pdf_when_a_port_has_a_default_destination(): void

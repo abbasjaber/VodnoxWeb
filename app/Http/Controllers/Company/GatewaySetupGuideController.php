@@ -17,13 +17,17 @@ use RuntimeException;
 use Throwable;
 
 /**
- * The printable wiring guide of one GSM gateway device.
+ * The printable installation guide of one GSM gateway device.
  *
  * Available inside a live technical session only. It is built from the device's
  * real data — the same values the workspace shows — and never invents a
  * destination: the inbound path number is the per-port number the server
  * allocated, while the *destination* of an incoming call stays owned by the
  * numbers & routing workspace.
+ *
+ * The document itself is English only and left to right, whatever language the
+ * dashboard is in: the engineer reads it at the device, where the page and field
+ * names are English. The on-screen workspace stays bilingual.
  *
  * SIP passwords are excluded by default and are only included when the caller
  * explicitly asks for them AND holds the technical permission to reveal
@@ -146,8 +150,12 @@ class GatewaySetupGuideController extends Controller
     }
 
     /**
-     * Render the guide as A4, bilingual (Arabic + English) and RTL, with an
-     * embedded Arabic font so the text stays selectable and copyable.
+     * Render the guide as A4, English and left to right.
+     *
+     * The document is deliberately not localised: it is read at the device, so
+     * every heading, step and table in it is English and the direction is LTR
+     * whatever language the dashboard was in when the export was started. The
+     * values are printed exactly as they are stored.
      */
     private function renderPdf(string $html): string
     {
@@ -172,18 +180,33 @@ class GatewaySetupGuideController extends Controller
             'format' => 'A4',
             'default_font' => 'xbriyaz',
             'tempDir' => $tempDir,
-            'margin_left' => 12,
-            'margin_right' => 12,
-            'margin_top' => 14,
-            'margin_bottom' => 16,
-            'autoScriptToLang' => true,
-            'autoArabic' => true,
+            'directionality' => 'ltr',
+            'margin_left' => 13,
+            'margin_right' => 13,
+            'margin_top' => 15,
+            'margin_bottom' => 18,
+            'margin_footer' => 7,
+            // The guide is English only, so nothing in it has to be script- or
+            // language-detected at render time.
+            'autoScriptToLang' => false,
+            'autoArabic' => false,
         ]);
 
-        $mpdf->autoScriptToLang = true;
-        $mpdf->autoArabic = true;
-        $mpdf->SetDirectionality('rtl');
-        $mpdf->SetTitle('VODNOX - Telephony Technical Settings - Setup guide');
+        $mpdf->SetDirectionality('ltr');
+        $mpdf->SetTitle('VODNOX — GSM Gateway Setup Guide');
+        $mpdf->SetAuthor('VODNOX');
+        $mpdf->SetSubject('GSM gateway installation guide');
+
+        // A page footer in the same language as the rest of the document. The
+        // running head is left out on purpose: the brand block at the top of the
+        // first page already carries the identity, and repeating it on every
+        // page costs vertical space the step tables need.
+        $mpdf->SetHTMLFooter(
+            '<div style="border-top: 0.6pt solid #c2cddd; padding-top: 3pt; '
+            .'font-size: 7.5pt; color: #46566f; text-align: center;">'
+            .'VODNOX · GSM Gateway Setup Guide · Page {PAGENO} of {nbpg}'
+            .'</div>'
+        );
 
         $mpdf->WriteHTML($html);
 
